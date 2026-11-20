@@ -4,7 +4,7 @@ icon: lucide/graduation-cap
 
 # dbt Ecosystem curriculum
 
-Follow one shop analytics project from its first local build to a production incident drill. Each lesson includes a diagram, a practice task, and a recall question.
+Follow one shop analytics project from its first local build to a production incident drill. Each lesson includes a diagram, a practice task with an expected result, and recall questions with answer guidance. Use the checkboxes to track what you can explain or reproduce.
 
 Start with the engine lessons for context or start building in [the DuckDB lab](0004-adapters-profiles-and-the-local-shop-lab.md). The local exercises use full dbt v2 with DuckDB. Managed features have design or local alternatives when you lack a platform account.
 
