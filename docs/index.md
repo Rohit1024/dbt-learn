@@ -46,4 +46,5 @@ flowchart TD
     E --> F["6. Semantic Layer, Catalog and Mesh"]
     F --> G["7. Packages, observability and developer tooling"]
     G --> H["8. Automation, AI and the production capstone"]
+    H --> I["9. Serverless dbt workloads on Google Cloud"]
 ```

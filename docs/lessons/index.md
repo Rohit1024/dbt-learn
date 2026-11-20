@@ -87,3 +87,13 @@ Connect the lifecycle and prove that the system can be operated.
 - [ ] [0038 · Platform APIs, integrations and dbt MCP](0038-platform-apis-integrations-and-dbt-mcp.md)
 - [ ] [0039 · Capstone build and release plan](0039-capstone-build-and-release-plan.md)
 - [ ] [0040 · Capstone incident drill and portfolio review](0040-capstone-incident-drill-and-portfolio-review.md)
+
+## 9. Serverless dbt workloads on Google Cloud
+
+Run the shop project against BigQuery in Cloud Run Jobs, then schedule, monitor, and recover it.
+
+- [ ] [0041 · Choose a GCP runtime for dbt](0041-cloud-run-jobs-and-bigquery.md)
+- [ ] [0042 · Package and deploy dbt Core to Cloud Run Jobs](0042-build-and-deploy-dbt-to-cloud-run.md)
+- [ ] [0043 · Schedule and orchestrate dbt on GCP](0043-schedule-and-orchestrate-gcp-dbt-jobs.md)
+- [ ] [0044 · Operate, retry, and recover serverless dbt builds](0044-operate-and-recover-gcp-dbt-jobs.md)
+- [ ] [0045 · Capstone · Ship and recover a dbt job on GCP](0045-gcp-serverless-dbt-capstone.md)
