@@ -8,7 +8,7 @@
 
 ## Active module
 
-Begin with foundations and execution engines. Use the first conversation to establish SQL and Git experience and choose the appropriate lesson. Curriculum checkboxes track demonstrated completion during guided sessions.
+Begin with foundations and execution engines. Use the first conversation to establish SQL and Git experience and choose the appropriate lesson. Curriculum checkmarks indicate published lessons. Record demonstrated learner progress in learning records.
 
 ## Teaching approach
 
