@@ -1,0 +1,89 @@
+---
+icon: lucide/graduation-cap
+---
+
+# dbt Ecosystem curriculum
+
+Follow one shop analytics project from its first local build to a production incident drill. Each lesson includes a diagram, a practice task, and a recall question.
+
+Start with the engine lessons for context or start building in [the DuckDB lab](0004-adapters-profiles-and-the-local-shop-lab.md). The local exercises use full dbt v2 with DuckDB. Managed features have design or local alternatives when you lack a platform account.
+
+## 1. Foundations and execution engines
+
+Build and inspect the first model in an isolated database.
+
+- [ ] [0001 · From loaded data to a dbt DAG](0001-from-loaded-data-to-a-dbt-dag.md)
+- [ ] [0002 · dbt Core v1 and the parse-to-run lifecycle](0002-dbt-core-v1-and-the-parse-to-run-lifecycle.md)
+- [ ] [0003 · Fusion, dbt v2 and dbt OSS](0003-fusion-dbt-v2-and-dbt-oss.md)
+- [ ] [0004 · Adapters, profiles and the local shop lab](0004-adapters-profiles-and-the-local-shop-lab.md)
+- [ ] [0005 · dbt Cloud CLI, platform CLI and VS Code](0005-dbt-cloud-cli-platform-cli-and-vs-code.md)
+
+## 2. Models, sources and materializations
+
+Represent upstream data, establish grain, and build safe transformations.
+
+- [ ] [0006 · Models, refs and project configuration](0006-models-refs-and-project-configuration.md)
+- [ ] [0007 · Sources and freshness](0007-sources-and-freshness.md)
+- [ ] [0008 · Seeds and lookup data](0008-seeds-and-lookup-data.md)
+- [ ] [0009 · Views, tables, ephemeral models and adapter choices](0009-views-tables-ephemeral-models-and-adapter-choices.md)
+- [ ] [0010 · Incremental models, late data and backfills](0010-incremental-models-late-data-and-backfills.md)
+
+## 3. History, testing and reusable SQL
+
+Capture mutable history and validate both transformations and warehouse data.
+
+- [ ] [0011 · Snapshots and slowly changing dimensions](0011-snapshots-and-slowly-changing-dimensions.md)
+- [ ] [0012 · Generic and singular data tests](0012-generic-and-singular-data-tests.md)
+- [ ] [0013 · Unit tests and edge cases](0013-unit-tests-and-edge-cases.md)
+- [ ] [0014 · Macros, Jinja and dispatch](0014-macros-jinja-and-dispatch.md)
+- [ ] [0015 · Analyses, hooks and user-defined functions](0015-analyses-hooks-and-user-defined-functions.md)
+
+## 4. Selection, artifacts and operations
+
+Inspect what dbt intends to do and build repeatable commands around it.
+
+- [ ] [0016 · Selectors, graph operators and named selections](0016-selectors-graph-operators-and-named-selections.md)
+- [ ] [0017 · Artifacts and run evidence](0017-artifacts-and-run-evidence.md)
+- [ ] [0018 · State comparison and deferral](0018-state-comparison-and-deferral.md)
+- [ ] [0019 · Model documentation, exposures and ownership](0019-model-documentation-exposures-and-ownership.md)
+- [ ] [0020 · Production safety, profiling and recovery](0020-production-safety-profiling-and-recovery.md)
+
+## 5. The managed platform and jobs
+
+Take a tested model from development to production.
+
+- [ ] [0021 · Studio IDE, Git and environment roles](0021-studio-ide-git-and-environment-roles.md)
+- [ ] [0022 · Deploy jobs, triggers and scheduling](0022-deploy-jobs-triggers-and-scheduling.md)
+- [ ] [0023 · CI jobs, temporary schemas and slim CI](0023-ci-jobs-temporary-schemas-and-slim-ci.md)
+- [ ] [0024 · Merge jobs and continuous deployment](0024-merge-jobs-and-continuous-deployment.md)
+- [ ] [0025 · dbt Canvas and visual model development](0025-dbt-canvas-and-visual-model-development.md)
+
+## 6. Semantic Layer, Catalog and Mesh
+
+Publish governed metrics, document lineage and define stable domain boundaries.
+
+- [ ] [0026 · MetricFlow, semantic models and entities](0026-metricflow-semantic-models-and-entities.md)
+- [ ] [0027 · Metrics, time spine and downstream integrations](0027-metrics-time-spine-and-downstream-integrations.md)
+- [ ] [0028 · dbt Explorer, Catalog and column-level lineage](0028-dbt-explorer-catalog-and-column-level-lineage.md)
+- [ ] [0029 · Contracts, model versions and groups](0029-contracts-model-versions-and-groups.md)
+- [ ] [0030 · dbt Mesh and cross-project references](0030-dbt-mesh-and-cross-project-references.md)
+
+## 7. Packages, observability and developer tooling
+
+Add tests and automation as reviewable dependencies.
+
+- [ ] [0031 · Package Hub, dbt deps and dbt-utils](0031-package-hub-dbt-deps-and-dbt-utils.md)
+- [ ] [0032 · dbt-expectations for richer data assertions](0032-dbt-expectations-for-richer-data-assertions.md)
+- [ ] [0033 · dbt-project-evaluator and architecture rules](0033-dbt-project-evaluator-and-architecture-rules.md)
+- [ ] [0034 · dbt-codegen, sqlfmt and dbt-checkpoint](0034-dbt-codegen-sqlfmt-and-dbt-checkpoint.md)
+- [ ] [0035 · dbt-artifacts and Elementary observability](0035-dbt-artifacts-and-elementary-observability.md)
+
+## 8. Automation, AI and the production capstone
+
+Connect the lifecycle and prove that the system can be operated.
+
+- [ ] [0036 · dbt Copilot, Wizard and reviewed AI changes](0036-dbt-copilot-wizard-and-reviewed-ai-changes.md)
+- [ ] [0037 · dbt State and freshness-aware orchestration](0037-dbt-state-and-freshness-aware-orchestration.md)
+- [ ] [0038 · Platform APIs, integrations and dbt MCP](0038-platform-apis-integrations-and-dbt-mcp.md)
+- [ ] [0039 · Capstone build and release plan](0039-capstone-build-and-release-plan.md)
+- [ ] [0040 · Capstone incident drill and portfolio review](0040-capstone-incident-drill-and-portfolio-review.md)
