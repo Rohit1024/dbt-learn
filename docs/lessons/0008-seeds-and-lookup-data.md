@@ -73,4 +73,4 @@ Run `dbt test --profiles-dir . --select order_status_has_lookup` and expect a pa
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0007-sources-and-freshness.md) | [All lessons](index.md) | [Next lesson →](0009-views-tables-ephemeral-models-and-adapter-choices.md) |
+| [Previous lesson](0007-sources-and-freshness.md) | [All lessons](index.md) | [Next lesson](0009-views-tables-ephemeral-models-and-adapter-choices.md) |

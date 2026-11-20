@@ -59,4 +59,4 @@ Expect both key tests to pass and both counts to be **3**. The build log should 
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0005-dbt-cloud-cli-platform-cli-and-vs-code.md) | [All lessons](index.md) | [Next lesson →](0007-sources-and-freshness.md) |
+| [Previous lesson](0005-dbt-cloud-cli-platform-cli-and-vs-code.md) | [All lessons](index.md) | [Next lesson](0007-sources-and-freshness.md) |

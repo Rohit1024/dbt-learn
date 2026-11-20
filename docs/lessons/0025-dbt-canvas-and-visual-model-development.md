@@ -23,9 +23,9 @@ flowchart TD
 
 Use the original three rows in the [shop lab](0004-adapters-profiles-and-the-local-shop-lab.md), the [order fact](0006-models-refs-and-project-configuration.md), and the [status lookup seed](0008-seeds-and-lookup-data.md) with `paid,true` and `pending,false`. The new model, `int_reportable_orders`, should contain one row per reportable order.
 
-**With Canvas access** — Use a sandbox where both inputs have been built. If the model explorer doesn't show the seed, publish a sandbox model using `select status, is_reportable from {{ ref('order_statuses') }}` and select that model as the lookup input. Wire `fct_orders` to the left and the lookup to the right. Configure an inner join on `status` and retain the fact's order ID, customer ID, status and amount along with the lookup's `is_reportable` flag. Filter for true, then drop the flag from the output. Name the output `int_reportable_orders`. Preview the join and filter, inspect the SQL, and run the model in development. Add the properties below in Studio and review the resulting files together.
+**With Canvas access.** Use a sandbox where both inputs have been built. If the model explorer doesn't show the seed, publish a sandbox model using `select status, is_reportable from {{ ref('order_statuses') }}` and select that model as the lookup input. Use `fct_orders` as the left input and the lookup as the right input. Configure an inner join on `status` and retain the fact's order ID, customer ID, status and amount along with the lookup's `is_reportable` flag. Filter for true, then drop the flag from the output. Name the output `int_reportable_orders`. Preview the join and filter, inspect the SQL, and run the model in development. Add the properties below in Studio and review the resulting files together.
 
-**Without Canvas** — Create `models/int_reportable_orders.sql` in Studio or in a local copy of the lab. The refs supply the two inputs and the SQL encodes the same join, filter and projection.
+**Without Canvas.** Create `models/int_reportable_orders.sql` in Studio or in a local copy of the lab. The refs supply the two inputs and the SQL encodes the same join, filter and projection.
 
 ```sql
 select
@@ -60,7 +60,7 @@ Use the command bar without `--profiles-dir .` in Studio. Expect order IDs 1 and
 ## Recall
 
 1. Why can a duplicate lookup row inflate revenue after this join?
-2. What happens to an order with a status absent from the lookup? Which test could surface that case?
+2. What happens to an order with a status absent from the lookup? Which test could detect it?
 
 ??? question "Answer guidance"
 
@@ -69,4 +69,4 @@ Use the command bar without `--profiles-dir .` in Studio. Expect order IDs 1 and
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0024-merge-jobs-and-continuous-deployment.md) | [All lessons](index.md) | [Next lesson →](0026-metricflow-semantic-models-and-entities.md) |
+| [Previous lesson](0024-merge-jobs-and-continuous-deployment.md) | [All lessons](index.md) | [Next lesson](0026-metricflow-semantic-models-and-entities.md) |

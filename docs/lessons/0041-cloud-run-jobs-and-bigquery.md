@@ -38,4 +38,4 @@ What happens if you set the task count to three with the same dbt command and ta
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0040-capstone-incident-drill-and-portfolio-review.md) | [All lessons](index.md) | [Next lesson →](0042-build-and-deploy-dbt-to-cloud-run.md) |
+| [Previous lesson](0040-capstone-incident-drill-and-portfolio-review.md) | [All lessons](index.md) | [Next lesson](0042-build-and-deploy-dbt-to-cloud-run.md) |

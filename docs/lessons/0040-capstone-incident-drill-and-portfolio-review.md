@@ -90,4 +90,4 @@ Attach the release plan, incident run and commit IDs, selected commands, and bef
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0039-capstone-build-and-release-plan.md) | [All lessons](index.md) | [Next lesson →](0041-cloud-run-jobs-and-bigquery.md) |
+| [Previous lesson](0039-capstone-build-and-release-plan.md) | [All lessons](index.md) | [Next lesson](0041-cloud-run-jobs-and-bigquery.md) |

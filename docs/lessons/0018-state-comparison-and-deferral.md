@@ -73,4 +73,4 @@ If selection is empty after a code change, check that `--state` contains the old
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0017-artifacts-and-run-evidence.md) | [All lessons](index.md) | [Next lesson →](0019-model-documentation-exposures-and-ownership.md) |
+| [Previous lesson](0017-artifacts-and-run-evidence.md) | [All lessons](index.md) | [Next lesson](0019-model-documentation-exposures-and-ownership.md) |

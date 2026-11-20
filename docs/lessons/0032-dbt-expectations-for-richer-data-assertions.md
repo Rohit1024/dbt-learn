@@ -15,7 +15,7 @@ flowchart TD
     Result --> Fix["Restore the valid fixture and rerun"]
 ```
 
-## Practice · dbt v2 with DuckDB
+## Practice with dbt v2 and DuckDB
 
 Start from the [shop_lab setup](0004-adapters-profiles-and-the-local-shop-lab.md). Add this package entry and merge the timezone variable into `dbt_project.yml`.
 
@@ -82,4 +82,4 @@ Expect three passing tests. In the scratch SQL only, replace the amount expressi
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0031-package-hub-dbt-deps-and-dbt-utils.md) | [All lessons](index.md) | [Next lesson →](0033-dbt-project-evaluator-and-architecture-rules.md) |
+| [Previous lesson](0031-package-hub-dbt-deps-and-dbt-utils.md) | [All lessons](index.md) | [Next lesson](0033-dbt-project-evaluator-and-architecture-rules.md) |

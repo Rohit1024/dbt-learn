@@ -68,4 +68,4 @@ In `target/compiled/shop_lab/models/order_amounts.sql`, find the multiplication 
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0013-unit-tests-and-edge-cases.md) | [All lessons](index.md) | [Next lesson →](0015-analyses-hooks-and-user-defined-functions.md) |
+| [Previous lesson](0013-unit-tests-and-edge-cases.md) | [All lessons](index.md) | [Next lesson](0015-analyses-hooks-and-user-defined-functions.md) |

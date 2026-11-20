@@ -79,4 +79,4 @@ Expect `orders_missing_from_staging` in the eager list only. When an unexpected 
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0015-analyses-hooks-and-user-defined-functions.md) | [All lessons](index.md) | [Next lesson →](0017-artifacts-and-run-evidence.md) |
+| [Previous lesson](0015-analyses-hooks-and-user-defined-functions.md) | [All lessons](index.md) | [Next lesson](0017-artifacts-and-run-evidence.md) |

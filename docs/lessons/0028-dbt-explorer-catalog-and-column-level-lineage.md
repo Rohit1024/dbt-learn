@@ -58,4 +58,4 @@ dbt show --profiles-dir . --info column_lineage
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0027-metrics-time-spine-and-downstream-integrations.md) | [All lessons](index.md) | [Next lesson →](0029-contracts-model-versions-and-groups.md) |
+| [Previous lesson](0027-metrics-time-spine-and-downstream-integrations.md) | [All lessons](index.md) | [Next lesson](0029-contracts-model-versions-and-groups.md) |

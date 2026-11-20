@@ -4,7 +4,7 @@ icon: lucide/graduation-cap
 
 # dbt Ecosystem curriculum
 
-Follow one shop analytics project from its first local build to a production incident drill. Each lesson includes a diagram, a practice task with an expected result, and recall questions with answer guidance. A checkmark indicates a published lesson.
+Build a shop analytics project locally, then use it to practice incident recovery. Each lesson includes a diagram, a practice task with an expected result, and recall questions with answer guidance. A checkmark indicates a published lesson.
 
 Start with the engine lessons for context or start building in [the DuckDB lab](0004-adapters-profiles-and-the-local-shop-lab.md). The local exercises use full dbt v2 with DuckDB. Managed features have design or local alternatives when you lack a platform account.
 
@@ -96,4 +96,4 @@ Run the shop project against BigQuery in Cloud Run Jobs, then schedule, monitor,
 - [x] [0042 · Package and deploy dbt Core to Cloud Run Jobs](0042-build-and-deploy-dbt-to-cloud-run.md)
 - [x] [0043 · Schedule and orchestrate dbt on GCP](0043-schedule-and-orchestrate-gcp-dbt-jobs.md)
 - [x] [0044 · Operate, retry, and recover serverless dbt builds](0044-operate-and-recover-gcp-dbt-jobs.md)
-- [x] [0045 · Capstone · Ship and recover a dbt job on GCP](0045-gcp-serverless-dbt-capstone.md)
+- [x] [0045 · Ship and recover a dbt job on GCP](0045-gcp-serverless-dbt-capstone.md)

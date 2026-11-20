@@ -28,9 +28,9 @@ flowchart TD
 
 Design a daily `Orders refresh` job. Assume ingestion aims to finish at 02:15 UTC and the new data should be queryable by 03:00 UTC. Choose an API trigger on successful load or a 02:30 UTC schedule with a blocking freshness gate. For example, a two-hour error threshold would reject yesterday's load at 02:30 UTC. Use a service identity that can read the inputs and write the orders schema, and specify who receives error and late-data alerts.
 
-**With platform access** — Try the command `dbt build --select +fct_orders` in a sandbox deployment environment that contains the [shop lab](0004-adapters-profiles-and-the-local-shop-lab.md) and the [order fact](0006-models-refs-and-project-configuration.md). Use **Run now**, then record the run ID, SHA, wait and execution times, fact result, and target. The lab rebuilds its fixture seed. A warehouse project should point its staging model at the ingestion-owned source.
+**With platform access.** Try the command `dbt build --select +fct_orders` in a sandbox deployment environment that contains the [shop lab](0004-adapters-profiles-and-the-local-shop-lab.md) and the [order fact](0006-models-refs-and-project-configuration.md). Use **Run now**, then record the run ID, SHA, wait and execution times, fact result, and target. The lab rebuilds its fixture seed. A warehouse project should point its staging model at the ingestion-owned source.
 
-**Without an account** — Use a disposable copy of the same lab with the original three orders. Run these commands from the lab directory:
+**Without an account.** Use a disposable copy of the same lab with the original three orders. Run these commands from the lab directory:
 
 ```bash
 dbt build --profiles-dir . --select +fct_orders
@@ -58,4 +58,4 @@ Expect a successful fact build and a stored count that grows from three rows to 
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0021-studio-ide-git-and-environment-roles.md) | [All lessons](index.md) | [Next lesson →](0023-ci-jobs-temporary-schemas-and-slim-ci.md) |
+| [Previous lesson](0021-studio-ide-git-and-environment-roles.md) | [All lessons](index.md) | [Next lesson](0023-ci-jobs-temporary-schemas-and-slim-ci.md) |

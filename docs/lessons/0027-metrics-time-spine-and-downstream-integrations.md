@@ -149,4 +149,4 @@ Managed exports can write a saved query as a table or view on a schedule for war
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0026-metricflow-semantic-models-and-entities.md) | [All lessons](index.md) | [Next lesson →](0028-dbt-explorer-catalog-and-column-level-lineage.md) |
+| [Previous lesson](0026-metricflow-semantic-models-and-entities.md) | [All lessons](index.md) | [Next lesson](0028-dbt-explorer-catalog-and-column-level-lineage.md) |

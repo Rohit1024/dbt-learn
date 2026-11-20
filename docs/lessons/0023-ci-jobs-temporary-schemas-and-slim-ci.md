@@ -27,9 +27,9 @@ flowchart TD
 
 Use a disposable copy of the [shop lab](0004-adapters-profiles-and-the-local-shop-lab.md) with the [order fact](0006-models-refs-and-project-configuration.md) and the `paid_orders_have_positive_total` [data test](0012-generic-and-singular-data-tests.md). In `models/fct_orders.sql`, replace the selected `total_cents` column with `0 as total_cents` **after** building the baseline below. This keeps the SQL valid while breaking a business rule.
 
-**With platform access** — Build the original lab in a sandbox baseline environment. Create a CI job in a separate sandbox deployment environment with `dbt build --select state:modified+` and select the baseline environment under **Compare changes against**. Open a PR with the broken edit. Find the fact build, failing test, and temporary schema in the run history. Fix the edit or close the PR, then check the posted status or schema cleanup.
+**With platform access.** Build the original lab in a sandbox baseline environment. Create a CI job in a separate sandbox deployment environment with `dbt build --select state:modified+` and select the baseline environment under **Compare changes against**. Open a PR with the broken edit. Find the fact build, failing test, and temporary schema in the run history. Fix the edit or close the PR, then check the posted status or schema cleanup.
 
-**Without an account** — Use the original `dev` target (schema `main`) as the baseline. Add this sibling of `dev` under `outputs` in `profiles.yml`. Both targets share the lab's DuckDB file so the CI target can read the baseline schema.
+**Without an account.** Use the original `dev` target (schema `main`) as the baseline. Add this sibling of `dev` under `outputs` in `profiles.yml`. Both targets share the lab's DuckDB file so the CI target can read the baseline schema.
 
 ```yaml
     ci:
@@ -59,7 +59,7 @@ Expect `fct_orders` and its downstream tests in the selection, with no build of 
 ## Recall
 
 1. Why does CI need both a saved manifest and access to some warehouse relations?
-2. A CI run selects an unexpected model that someone else just merged. What should you compare?
+2. A CI run selects an unexpected model that someone else recently merged. What should you compare?
 
 ??? question "Answer guidance"
 
@@ -68,4 +68,4 @@ Expect `fct_orders` and its downstream tests in the selection, with no build of 
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0022-deploy-jobs-triggers-and-scheduling.md) | [All lessons](index.md) | [Next lesson →](0024-merge-jobs-and-continuous-deployment.md) |
+| [Previous lesson](0022-deploy-jobs-triggers-and-scheduling.md) | [All lessons](index.md) | [Next lesson](0024-merge-jobs-and-continuous-deployment.md) |

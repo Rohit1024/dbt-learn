@@ -46,4 +46,4 @@ In the starter, the first selection lists `stg_orders`. The leading `+` includes
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| — | [All lessons](index.md) | [Next lesson →](0002-dbt-core-v1-and-the-parse-to-run-lifecycle.md) |
+| | [All lessons](index.md) | [Next lesson](0002-dbt-core-v1-and-the-parse-to-run-lifecycle.md) |

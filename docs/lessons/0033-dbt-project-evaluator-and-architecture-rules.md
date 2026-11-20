@@ -21,7 +21,7 @@ flowchart TD
     Check --> Review["Remove the shortcut or accept a scoped exception"]
 ```
 
-## Practice · dbt v2 native checks
+## Practice with dbt v2 native checks
 
 In [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md), add this entry to `packages.yml`.
 
@@ -77,4 +77,4 @@ Replace the probe's `source()` with `ref('stg_orders')` and rerun. Expect the pr
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0032-dbt-expectations-for-richer-data-assertions.md) | [All lessons](index.md) | [Next lesson →](0034-dbt-codegen-sqlfmt-and-dbt-checkpoint.md) |
+| [Previous lesson](0032-dbt-expectations-for-richer-data-assertions.md) | [All lessons](index.md) | [Next lesson](0034-dbt-codegen-sqlfmt-and-dbt-checkpoint.md) |

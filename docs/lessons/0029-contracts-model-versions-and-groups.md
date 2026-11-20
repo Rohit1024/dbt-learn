@@ -113,4 +113,4 @@ Expect 3,500 cents from the default ref and 35.00 dollars from the pinned v2 ref
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0028-dbt-explorer-catalog-and-column-level-lineage.md) | [All lessons](index.md) | [Next lesson →](0030-dbt-mesh-and-cross-project-references.md) |
+| [Previous lesson](0028-dbt-explorer-catalog-and-column-level-lineage.md) | [All lessons](index.md) | [Next lesson](0030-dbt-mesh-and-cross-project-references.md) |

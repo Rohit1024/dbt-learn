@@ -81,10 +81,10 @@ Why can Scheduler show a successful attempt while the dashboard remains stale?
 
 ??? note "Answer guidance"
 
-    Scheduler records delivery to the control-plane endpoint. The job can fail after it starts. Observe Cloud Run execution status and BigQuery results, or use Workflows to gate downstream work on completion.
+    Scheduler records delivery to the control-plane endpoint. The job can fail after it starts. Observe Cloud Run execution status and BigQuery results, or use Workflows to start downstream steps once the job succeeds.
 
 [Schedule Cloud Run jobs](https://docs.cloud.google.com/run/docs/execute/jobs-on-schedule) · [Cloud Run Workflows connector](https://docs.cloud.google.com/workflows/docs/reference/googleapis/run/v2/projects.locations.jobs/run) · [Create workflows](https://docs.cloud.google.com/workflows/docs/creating-updating-workflow) · [Execute a workflow](https://docs.cloud.google.com/workflows/docs/executing-workflow)
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0042-build-and-deploy-dbt-to-cloud-run.md) | [All lessons](index.md) | [Next lesson →](0044-operate-and-recover-gcp-dbt-jobs.md) |
+| [Previous lesson](0042-build-and-deploy-dbt-to-cloud-run.md) | [All lessons](index.md) | [Next lesson](0044-operate-and-recover-gcp-dbt-jobs.md) |

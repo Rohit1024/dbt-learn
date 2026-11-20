@@ -53,4 +53,4 @@ Record the version, exit status and first diagnostic for each mode. On full dbt 
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0002-dbt-core-v1-and-the-parse-to-run-lifecycle.md) | [All lessons](index.md) | [Next lesson →](0004-adapters-profiles-and-the-local-shop-lab.md) |
+| [Previous lesson](0002-dbt-core-v1-and-the-parse-to-run-lifecycle.md) | [All lessons](index.md) | [Next lesson](0004-adapters-profiles-and-the-local-shop-lab.md) |

@@ -73,4 +73,4 @@ Expect two paid orders and 3,000 cents. Write one impact note for Analytics abou
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0018-state-comparison-and-deferral.md) | [All lessons](index.md) | [Next lesson →](0020-production-safety-profiling-and-recovery.md) |
+| [Previous lesson](0018-state-comparison-and-deferral.md) | [All lessons](index.md) | [Next lesson](0020-production-safety-profiling-and-recovery.md) |

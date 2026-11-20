@@ -10,7 +10,7 @@ An environment supplies the code branch, dbt release track, and warehouse settin
 | CI | Pull request revision and a scoped deployment identity | Temporary PR schema in a separate CI environment |
 | Production job | Configured deployment branch and a dedicated service identity | Published schema such as `analytics` |
 
-**Compile** resolves Jinja and references so you can inspect the resulting SQL. **Preview** executes a query with development credentials. **Build** writes selected relations and runs their selected tests. A small preview shows sample values, while a build can surface assertions about the whole relation. Check the target and the release track before comparing Studio with a job. [IDE user interface](https://docs.getdbt.com/docs/platform/studio-ide/ide-user-interface) · [dbt show](https://docs.getdbt.com/reference/commands/show)
+**Compile** resolves Jinja and references so you can inspect the resulting SQL. **Preview** executes a query with development credentials. **Build** writes selected relations and runs their selected tests. A small preview shows sample values, while a build can test the whole relation. Check the target and the release track before comparing Studio with a job. [IDE user interface](https://docs.getdbt.com/docs/platform/studio-ide/ide-user-interface) · [dbt show](https://docs.getdbt.com/reference/commands/show)
 
 ```mermaid
 flowchart TD
@@ -26,8 +26,8 @@ flowchart TD
 
 Use the [shop lab](0004-adapters-profiles-and-the-local-shop-lab.md) with the [order fact](0006-models-refs-and-project-configuration.md) and its original three orders. On a scratch branch, put each selected column of `fct_orders.sql` on its own line. Keep the same columns, materialization and `ref('stg_orders')`.
 
-- **In Studio** — Confirm your personal credentials and schema, create a branch, save the edit, and run `dbt build --select +fct_orders` in the command bar. Open the fact's compiled SQL and preview. Inspect the diff, then use **Commit and sync** if you're using a training repository.
-- **Without an account** — In a local Git checkout of the lab, create a scratch branch with `git switch -c lab/studio-orders` and make the same edit. Use the local editor to save, then run the commands below. The DuckDB profile simulates a personal target. Compare the branch and target you used with the production settings in the table above.
+- **In Studio.** Confirm your personal credentials and schema, create a branch, save the edit, and run `dbt build --select +fct_orders` in the command bar. Open the fact's compiled SQL and preview. Inspect the diff, then use **Commit and sync** if you're using a training repository.
+- **Without an account.** In a local Git checkout of the lab, create a scratch branch with `git switch -c lab/studio-orders` and make the same edit. Use the local editor to save, then run the commands below. The DuckDB profile simulates a personal target. Compare the branch and target you used with the production settings in the table above.
 
 ```bash
 dbt build --profiles-dir . --select +fct_orders
@@ -50,4 +50,4 @@ Check the SQL in `target/compiled/shop_lab/models/fct_orders.sql` after compilin
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0020-production-safety-profiling-and-recovery.md) | [All lessons](index.md) | [Next lesson →](0022-deploy-jobs-triggers-and-scheduling.md) |
+| [Previous lesson](0020-production-safety-profiling-and-recovery.md) | [All lessons](index.md) | [Next lesson](0022-deploy-jobs-triggers-and-scheduling.md) |

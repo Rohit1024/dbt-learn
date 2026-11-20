@@ -69,4 +69,4 @@ For the analyst check, use the original [shop_lab data](0004-adapters-profiles-a
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0037-dbt-state-and-freshness-aware-orchestration.md) | [All lessons](index.md) | [Next lesson →](0039-capstone-build-and-release-plan.md) |
+| [Previous lesson](0037-dbt-state-and-freshness-aware-orchestration.md) | [All lessons](index.md) | [Next lesson](0039-capstone-build-and-release-plan.md) |

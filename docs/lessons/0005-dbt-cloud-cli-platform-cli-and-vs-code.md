@@ -59,4 +59,4 @@ The first compile's `from` points to `main.raw_orders`. The second points to `ba
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0004-adapters-profiles-and-the-local-shop-lab.md) | [All lessons](index.md) | [Next lesson →](0006-models-refs-and-project-configuration.md) |
+| [Previous lesson](0004-adapters-profiles-and-the-local-shop-lab.md) | [All lessons](index.md) | [Next lesson](0006-models-refs-and-project-configuration.md) |

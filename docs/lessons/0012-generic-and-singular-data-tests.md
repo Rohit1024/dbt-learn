@@ -69,4 +69,4 @@ where status = 'paid'
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0011-snapshots-and-slowly-changing-dimensions.md) | [All lessons](index.md) | [Next lesson →](0013-unit-tests-and-edge-cases.md) |
+| [Previous lesson](0011-snapshots-and-slowly-changing-dimensions.md) | [All lessons](index.md) | [Next lesson](0013-unit-tests-and-edge-cases.md) |

@@ -6,7 +6,7 @@ Choose commands based on what the merge should publish.
 
 | Goal | Command and baseline |
 | --- | --- |
-| Publish model changes promptly | The default `dbt build --select state:modified+` builds modified nodes and their downstream dependents. Give it a successful baseline that represents the code actually built in production. Use an explicit full or scoped build to bootstrap the environment. |
+| Publish model changes promptly | The default `dbt build --select state:modified+` builds modified nodes and their downstream dependents. Give it a successful baseline that represents the code built in production. Use an explicit full or scoped build to bootstrap the environment. |
 | Refresh the CI comparison manifest promptly | Use `dbt parse` in the environment configured under the CI job's **Compare changes against** setting. The docs show `dbt parse --no-partial-parse` for a full parse where supported. Parsing produces project metadata without a warehouse build. |
 
 Keep a parse-only manifest out of the baseline for a state-selected production build. Otherwise that build can treat code as already applied and skip a relation that still needs updating. If CI uses a separate manifest-only environment, make sure the deferred relation names still point to real, readable relations. Where you manage artifacts yourself, `--defer-state` can provide an applied baseline separately from the comparison manifest. [Merge jobs](https://docs.getdbt.com/docs/deploy/merge-jobs) · [CI jobs](https://docs.getdbt.com/docs/deploy/ci-jobs) · [Defer reference](https://docs.getdbt.com/reference/node-selection/defer)
@@ -28,9 +28,9 @@ flowchart TD
 
 Use a disposable sandbox or a local copy of the [shop lab](0004-adapters-profiles-and-the-local-shop-lab.md) with the [order fact](0006-models-refs-and-project-configuration.md) materialized as a table. Build the original version and record its three rows. Simulate a merged change by adding `where status = 'paid'` to the fact. This is a sandbox release exercise that deliberately changes which orders the fact contains.
 
-**With platform access** — On a training repository, confirm CI passes before merging into the sandbox environment's base branch. Use a merge job with `dbt build --select fct_orders` and a previously built `stg_orders`. Check the trigger, SHA, and stored result in the sandbox. Record when the next data-driven refresh can run without overlapping the release.
+**With platform access.** On a training repository, confirm CI passes before merging into the sandbox environment's base branch. Use a merge job with `dbt build --select fct_orders` and a previously built `stg_orders`. Check the trigger, SHA, and stored result in the sandbox. Record when the next data-driven refresh can run without overlapping the release.
 
-**Without an account** — Treat the original build as the last deployed revision and the edited file as the merged revision. Run these steps in order, with the edit between the first count and `dbt parse`.
+**Without an account.** Treat the original build as the last deployed revision and the edited file as the merged revision. Run these steps in order, with the edit between the first count and `dbt parse`.
 
 ```bash
 dbt build --profiles-dir . --select +fct_orders
@@ -58,4 +58,4 @@ Expect counts of 3, 3 and 2. The parsed manifest should contain the new filter a
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0023-ci-jobs-temporary-schemas-and-slim-ci.md) | [All lessons](index.md) | [Next lesson →](0025-dbt-canvas-and-visual-model-development.md) |
+| [Previous lesson](0023-ci-jobs-temporary-schemas-and-slim-ci.md) | [All lessons](index.md) | [Next lesson](0025-dbt-canvas-and-visual-model-development.md) |

@@ -2,7 +2,7 @@
 
 A dbt package brings project code into your project. Its macros can generate adapter-specific SQL, and its models, seeds, tests and hooks can run as part of your job. Review the release diff and transitive dependencies before running new package code.
 
-On [Package Hub](https://hub.getdbt.com/), open the exact release and check its `require-dbt-version` against `dbt --version`. For v2, check what the compatibility badge actually covers. Confirm adapter support in the package docs and run a small build on your target. Version constraints and parse checks leave SQL execution to be verified.
+On [Package Hub](https://hub.getdbt.com/), open the exact release and check its `require-dbt-version` against `dbt --version`. For v2, check what the compatibility badge covers. Confirm adapter support in the package docs and run a small build on your target. Version constraints and parse checks leave SQL execution to be verified.
 
 `packages.yml` declares the dependencies. `dbt deps` installs their resolved versions into `dbt_packages/` by default. Commit `packages.yml` and `package-lock.yml` so CI can run `dbt deps` in a clean checkout with the same resolutions. When intentionally changing a pin or refreshing a range with `dbt deps --upgrade`, review the lock diff for indirect changes and run the affected builds. [dbt deps reference](https://docs.getdbt.com/reference/commands/deps)
 
@@ -17,7 +17,7 @@ flowchart TD
     Macro --> Build["Build scratch model and check the grain"]
 ```
 
-## Practice · dbt v2 with DuckDB
+## Practice with dbt v2 and DuckDB
 
 Use the [shop_lab setup](0004-adapters-profiles-and-the-local-shop-lab.md) and run from its project root. Merge this entry into `packages.yml`. The example pins [dbt-utils 1.3.3](https://hub.getdbt.com/dbt-labs/dbt_utils/1.3.3/).
 
@@ -82,4 +82,4 @@ Expect three rows, three distinct key values, three passing tests and `null_and_
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0030-dbt-mesh-and-cross-project-references.md) | [All lessons](index.md) | [Next lesson →](0032-dbt-expectations-for-richer-data-assertions.md) |
+| [Previous lesson](0030-dbt-mesh-and-cross-project-references.md) | [All lessons](index.md) | [Next lesson](0032-dbt-expectations-for-richer-data-assertions.md) |

@@ -11,7 +11,7 @@ A semantic model exposes a dbt model's grain, join keys, and dimensions to Metri
 | Categorical dimension | `status` lets a consumer group or filter orders by business state. |
 | Time dimension | `updated_at` lets a consumer group by update period. `agg_time_dimension` supplies the default time axis for metrics in the model. |
 
-Two semantic models join through a shared **entity name**, even when their SQL columns have different names. A foreign-to-primary join from orders to a one-row-per-customer dimension preserves order grain. MetricFlow restricts paths that would fan out, using the declared entity types. If the supposed customer key actually has duplicates, a permitted join can still multiply revenue. Test the join target for uniqueness and non-null keys, and test relationships where a matching customer is required. [MetricFlow joins](https://docs.getdbt.com/docs/build/join-logic)
+Two semantic models join through a shared **entity name**, even when their SQL columns have different names. A foreign-to-primary join from orders to a one-row-per-customer dimension preserves order grain. MetricFlow restricts paths that would fan out, using the declared entity types. If the customer key contains duplicates, a permitted join can still multiply revenue. Test the join target for uniqueness and non-null keys, and test relationships where a matching customer is required. [MetricFlow joins](https://docs.getdbt.com/docs/build/join-logic)
 
 ```mermaid
 flowchart TD
@@ -79,4 +79,4 @@ Check that parsing accepts the annotations and that the existing `unique` and `n
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0025-dbt-canvas-and-visual-model-development.md) | [All lessons](index.md) | [Next lesson →](0027-metrics-time-spine-and-downstream-integrations.md) |
+| [Previous lesson](0025-dbt-canvas-and-visual-model-development.md) | [All lessons](index.md) | [Next lesson](0027-metrics-time-spine-and-downstream-integrations.md) |

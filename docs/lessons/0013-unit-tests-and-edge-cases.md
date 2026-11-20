@@ -57,4 +57,4 @@ unit_tests:
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0012-generic-and-singular-data-tests.md) | [All lessons](index.md) | [Next lesson →](0014-macros-jinja-and-dispatch.md) |
+| [Previous lesson](0012-generic-and-singular-data-tests.md) | [All lessons](index.md) | [Next lesson](0014-macros-jinja-and-dispatch.md) |

@@ -49,7 +49,7 @@ Write a release plan with a sample PR that changes which orders qualify as paid.
 | Merge deployment | Deploy the approved commit with a production service identity and build the affected models. Verify model results and the metric before advancing the baseline and notifying the dashboard owner. |
 | Daily refresh | Run after ingestion and check the required batch or source freshness before the build. Use a data refresh selection such as `dbt build --select +fct_orders` for the lab graph. Serialize writes to the same production relations across the merge and refresh jobs. Check the served batch and revenue before clearing the alert. |
 
-Name the source owner, transformation on-call and dashboard owner. Include when to pause publication, which prior commit to redeploy, and which relations must be rebuilt or reconciled after rollback. For a local submission, provide the executed lab evidence and walk through the platform gates using example job targets. [dbt deployments](https://docs.getdbt.com/docs/deploy/deployments) · [dbt scheduler](https://docs.getdbt.com/docs/deploy/job-scheduler) · [Support playbooks](../debugging/index.md)
+Name the source owner, transformation on-call and dashboard owner. Include when to pause publication, which prior commit to redeploy, and which relations must be rebuilt or reconciled after rollback. For a local submission, provide the executed lab evidence and show which job targets run each platform check. [dbt deployments](https://docs.getdbt.com/docs/deploy/deployments) · [dbt scheduler](https://docs.getdbt.com/docs/deploy/job-scheduler) · [Support playbooks](../debugging/index.md)
 
 ## Recall
 
@@ -63,4 +63,4 @@ Name the source owner, transformation on-call and dashboard owner. Include when 
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0038-platform-apis-integrations-and-dbt-mcp.md) | [All lessons](index.md) | [Next lesson →](0040-capstone-incident-drill-and-portfolio-review.md) |
+| [Previous lesson](0038-platform-apis-integrations-and-dbt-mcp.md) | [All lessons](index.md) | [Next lesson](0040-capstone-incident-drill-and-portfolio-review.md) |

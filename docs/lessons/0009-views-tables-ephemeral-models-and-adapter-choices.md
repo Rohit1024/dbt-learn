@@ -63,4 +63,4 @@ Inspect `target/compiled/shop_lab/models/fct_orders.sql` for the inlined helper 
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0008-seeds-and-lookup-data.md) | [All lessons](index.md) | [Next lesson →](0010-incremental-models-late-data-and-backfills.md) |
+| [Previous lesson](0008-seeds-and-lookup-data.md) | [All lessons](index.md) | [Next lesson](0010-incremental-models-late-data-and-backfills.md) |

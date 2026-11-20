@@ -67,4 +67,4 @@ After the exercise, remove the scratch SQL file and the temporary `columns:` blo
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0006-models-refs-and-project-configuration.md) | [All lessons](index.md) | [Next lesson →](0008-seeds-and-lookup-data.md) |
+| [Previous lesson](0006-models-refs-and-project-configuration.md) | [All lessons](index.md) | [Next lesson](0008-seeds-and-lookup-data.md) |

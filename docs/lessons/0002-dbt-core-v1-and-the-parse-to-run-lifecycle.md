@@ -57,4 +57,4 @@ dbt show --profiles-dir . --inline "select table_type from information_schema.ta
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0001-from-loaded-data-to-a-dbt-dag.md) | [All lessons](index.md) | [Next lesson →](0003-fusion-dbt-v2-and-dbt-oss.md) |
+| [Previous lesson](0001-from-loaded-data-to-a-dbt-dag.md) | [All lessons](index.md) | [Next lesson](0003-fusion-dbt-v2-and-dbt-oss.md) |

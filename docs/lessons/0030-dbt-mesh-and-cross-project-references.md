@@ -61,4 +61,4 @@ If Orders moves to dollars, publish the cents and dollars versions together, kee
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0029-contracts-model-versions-and-groups.md) | [All lessons](index.md) | [Next lesson →](0031-package-hub-dbt-deps-and-dbt-utils.md) |
+| [Previous lesson](0029-contracts-model-versions-and-groups.md) | [All lessons](index.md) | [Next lesson](0031-package-hub-dbt-deps-and-dbt-utils.md) |

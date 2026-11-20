@@ -16,7 +16,7 @@ flowchart TD
     Parse --> Hook["Run the description hook locally and in CI"]
 ```
 
-## Practice · dbt v2 with DuckDB and external Python tools
+## Practice with dbt v2, DuckDB, and Python tools
 
 Use [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md) with the [fct_orders model](0006-models-refs-and-project-configuration.md). Run from the lab root in a scratch Git checkout. Add this to `packages.yml`.
 
@@ -32,7 +32,7 @@ dbt build --profiles-dir . --select +fct_orders
 dbt run-operation generate_model_yaml --profiles-dir . --args '{"model_names": ["fct_orders"]}'
 ```
 
-Expect a draft with five columns, including `total_cents` and `updated_at`. Merge the draft into the existing `fct_orders` properties or create `models/fct_orders.yml`. Give the model a description such as “One row per order, with amounts in cents”, and add `unique` and `not_null` tests on `order_id` if missing. Keep any descriptions and tests already in the project.
+Expect a draft with five columns, including `total_cents` and `updated_at`. Merge the draft into the existing `fct_orders` properties or create `models/fct_orders.yml`. Give the model a description such as "One row per order, with amounts in cents", and add `unique` and `not_null` tests on `order_id` if missing. Keep any descriptions and tests already in the project.
 
 With Python 3.11 or newer supported by both pins, install into an isolated Python environment. Add extra spaces between `select` and `order_id` in `models/fct_orders.sql` to see the formatter catch the change.
 
@@ -76,4 +76,4 @@ Expect the hook to pass and the fact's key tests to pass. Temporarily blank the 
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0033-dbt-project-evaluator-and-architecture-rules.md) | [All lessons](index.md) | [Next lesson →](0035-dbt-artifacts-and-elementary-observability.md) |
+| [Previous lesson](0033-dbt-project-evaluator-and-architecture-rules.md) | [All lessons](index.md) | [Next lesson](0035-dbt-artifacts-and-elementary-observability.md) |

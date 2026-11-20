@@ -90,4 +90,4 @@ Restore the original seed and rerun the full-refresh command so later exercises 
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0009-views-tables-ephemeral-models-and-adapter-choices.md) | [All lessons](index.md) | [Next lesson →](0011-snapshots-and-slowly-changing-dimensions.md) |
+| [Previous lesson](0009-views-tables-ephemeral-models-and-adapter-choices.md) | [All lessons](index.md) | [Next lesson](0011-snapshots-and-slowly-changing-dimensions.md) |

@@ -71,4 +71,4 @@ On paper, sketch a native `is_reportable_status` UDF with a string argument and 
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0014-macros-jinja-and-dispatch.md) | [All lessons](index.md) | [Next lesson →](0016-selectors-graph-operators-and-named-selections.md) |
+| [Previous lesson](0014-macros-jinja-and-dispatch.md) | [All lessons](index.md) | [Next lesson](0016-selectors-graph-operators-and-named-selections.md) |

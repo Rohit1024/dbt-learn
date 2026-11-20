@@ -50,4 +50,4 @@ Why should a retry avoid reusing the same artifact path as the initial attempt?
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0043-schedule-and-orchestrate-gcp-dbt-jobs.md) | [All lessons](index.md) | [Next lesson →](0045-gcp-serverless-dbt-capstone.md) |
+| [Previous lesson](0043-schedule-and-orchestrate-gcp-dbt-jobs.md) | [All lessons](index.md) | [Next lesson](0045-gcp-serverless-dbt-capstone.md) |

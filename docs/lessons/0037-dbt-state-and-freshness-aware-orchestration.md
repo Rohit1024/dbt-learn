@@ -10,7 +10,7 @@ dbt State can observe data changes through warehouse metadata or configured sour
 
 !!! note "Runtime and adapter support"
 
-    dbt State requires a dbt account, including for self-managed use. It is built into dbt v2 and v1.13, with a plugin available for v1.7–1.12. Check supported warehouses before piloting. DuckDB supports this lesson's local manifest exercise. [dbt State setup](https://docs.getdbt.com/docs/deploy/dbt-state-setup)
+    dbt State requires a dbt account, including for self-managed use. It is built into dbt v2 and v1.13, with a plugin available for v1.7 through v1.12. Check supported warehouses before piloting. DuckDB supports this lesson's local manifest exercise. [dbt State setup](https://docs.getdbt.com/docs/deploy/dbt-state-setup)
 
 ```mermaid
 flowchart TD
@@ -63,4 +63,4 @@ Compare the run's **Explain** tab (or `dbt state explain` on a supported v2 run)
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0036-dbt-copilot-wizard-and-reviewed-ai-changes.md) | [All lessons](index.md) | [Next lesson →](0038-platform-apis-integrations-and-dbt-mcp.md) |
+| [Previous lesson](0036-dbt-copilot-wizard-and-reviewed-ai-changes.md) | [All lessons](index.md) | [Next lesson](0038-platform-apis-integrations-and-dbt-mcp.md) |

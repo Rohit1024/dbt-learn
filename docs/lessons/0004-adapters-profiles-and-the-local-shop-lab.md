@@ -97,4 +97,4 @@ Run later lab commands from `shop_lab`. Use `--profiles-dir .` to select the lab
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0003-fusion-dbt-v2-and-dbt-oss.md) | [All lessons](index.md) | [Next lesson →](0005-dbt-cloud-cli-platform-cli-and-vs-code.md) |
+| [Previous lesson](0003-fusion-dbt-v2-and-dbt-oss.md) | [All lessons](index.md) | [Next lesson](0005-dbt-cloud-cli-platform-cli-and-vs-code.md) |

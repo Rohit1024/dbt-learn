@@ -1,6 +1,6 @@
 # Production safety, profiling and recovery
 
-A failed `dbt build` can leave upstream relations committed and downstream relations skipped. A skipped model may still have a relation from an earlier run. Start from the invocation and target, then verify what the warehouse actually contains before choosing the recovery scope. [dbt build](https://docs.getdbt.com/reference/commands/build)
+A failed `dbt build` can leave upstream relations committed and downstream relations skipped. A skipped model may still have a relation from an earlier run. Start from the invocation and target, then verify what the warehouse contains before choosing the recovery scope. [dbt build](https://docs.getdbt.com/reference/commands/build)
 
 | Symptom | First diagnostic |
 | --- | --- |
@@ -80,4 +80,4 @@ Find the status filter and the two rows it passes to the aggregate. Operator row
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0019-model-documentation-exposures-and-ownership.md) | [All lessons](index.md) | [Next lesson →](0021-studio-ide-git-and-environment-roles.md) |
+| [Previous lesson](0019-model-documentation-exposures-and-ownership.md) | [All lessons](index.md) | [Next lesson](0021-studio-ide-git-and-environment-roles.md) |

@@ -69,4 +69,4 @@ Expect a concrete warehouse type. If the fact is missing, check that the catalog
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0016-selectors-graph-operators-and-named-selections.md) | [All lessons](index.md) | [Next lesson →](0018-state-comparison-and-deferral.md) |
+| [Previous lesson](0016-selectors-graph-operators-and-named-selections.md) | [All lessons](index.md) | [Next lesson](0018-state-comparison-and-deferral.md) |

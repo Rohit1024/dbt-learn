@@ -64,4 +64,4 @@ snapshots:
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0010-incremental-models-late-data-and-backfills.md) | [All lessons](index.md) | [Next lesson →](0012-generic-and-singular-data-tests.md) |
+| [Previous lesson](0010-incremental-models-late-data-and-backfills.md) | [All lessons](index.md) | [Next lesson](0012-generic-and-singular-data-tests.md) |

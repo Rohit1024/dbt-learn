@@ -1,6 +1,6 @@
 # dbt Copilot, Wizard and reviewed AI changes
 
-Use AI to draft a change and ask for evidence a reviewer can reproduce. dbt Copilot generated SQL, tests, documentation and semantic models inside the platform. As of November 19, 2026, dbt Labs no longer sells or enables Copilot for new accounts. Existing customers can still use it. dbt Wizard is the recommended agent for multi-step work in Studio and in local Desktop and CLI workflows. Check the current preview status, account settings and usage terms for your surface. [Copilot](https://docs.getdbt.com/docs/dbt-ai/copilot-overview) · [Wizard](https://docs.getdbt.com/docs/platform/wizard-overview)
+Use AI to draft a change and ask for evidence a reviewer can reproduce. dbt Copilot generated SQL, tests, documentation and semantic models inside the platform. As of November 19, 2026, dbt Labs no longer sells or enables Copilot for new accounts. Existing customers can still use it. dbt Wizard is the recommended agent for multi-step work in Studio and in local Desktop and CLI workflows. Check the current preview status, account settings and usage terms for Studio, Desktop, or the CLI, whichever you use. [Copilot](https://docs.getdbt.com/docs/dbt-ai/copilot-overview) · [Wizard](https://docs.getdbt.com/docs/platform/wizard-overview)
 
 Wizard uses the dbt Information Schema for context such as upstream dependencies, tests and metric definitions. Start by asking it to identify the metric's owning model and downstream exposure, then request a diff and validation commands. Work on a development branch with a sandbox target. Share the model schema and synthetic cases, and keep credentials and sensitive records out of prompts. Review any command that writes data and verify its target before running it.
 
@@ -48,4 +48,4 @@ Check the SQL or metric diff for join fanout, misplaced filters and changes to u
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0035-dbt-artifacts-and-elementary-observability.md) | [All lessons](index.md) | [Next lesson →](0037-dbt-state-and-freshness-aware-orchestration.md) |
+| [Previous lesson](0035-dbt-artifacts-and-elementary-observability.md) | [All lessons](index.md) | [Next lesson](0037-dbt-state-and-freshness-aware-orchestration.md) |

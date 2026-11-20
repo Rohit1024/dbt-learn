@@ -117,4 +117,4 @@ Why can a principal deploy and execute the job but still see a BigQuery access e
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0041-cloud-run-jobs-and-bigquery.md) | [All lessons](index.md) | [Next lesson →](0043-schedule-and-orchestrate-gcp-dbt-jobs.md) |
+| [Previous lesson](0041-cloud-run-jobs-and-bigquery.md) | [All lessons](index.md) | [Next lesson](0043-schedule-and-orchestrate-gcp-dbt-jobs.md) |

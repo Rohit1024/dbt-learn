@@ -45,7 +45,7 @@ Run `dbt build --target telemetry_dev --select +fct_orders` with the order test 
 
 Compare the collectors' overlap before enabling both. Set retention and restrict access to telemetry tables and reports that contain project metadata or sampled test rows.
 
-## Practice · local dbt v2 with DuckDB
+## Practice with local dbt v2 and DuckDB
 
 Start in a fresh [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md) with [fct_orders](0006-models-refs-and-project-configuration.md). Save as `tests/no_negative_order_amounts.sql`.
 
@@ -91,4 +91,4 @@ Expect distinct invocation IDs, the same test file path and statuses `pass` and 
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
-| [← Previous lesson](0034-dbt-codegen-sqlfmt-and-dbt-checkpoint.md) | [All lessons](index.md) | [Next lesson →](0036-dbt-copilot-wizard-and-reviewed-ai-changes.md) |
+| [Previous lesson](0034-dbt-codegen-sqlfmt-and-dbt-checkpoint.md) | [All lessons](index.md) | [Next lesson](0036-dbt-copilot-wizard-and-reviewed-ai-changes.md) |
