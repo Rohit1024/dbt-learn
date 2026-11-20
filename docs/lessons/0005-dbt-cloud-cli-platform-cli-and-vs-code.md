@@ -1,27 +1,61 @@
 # dbt Cloud CLI, platform CLI and VS Code
 
-The **dbt Cloud CLI**, now called the **dbt platform CLI** in the docs, brings platform project context into terminal-based development. The v1 CLI targets the platform development environment. In the v2 workflow a local engine can use platform metadata and credentials while connecting to the warehouse from your workstation. Confirm where code runs and whose network and credentials it uses before diagnosing access failures.
+The **dbt Cloud CLI**, now called the **dbt platform CLI**, sends terminal commands to the managed development environment. That environment's release track determines the engine that runs them. The **local dbt CLI** runs the installed engine on your machine. You can use local dbt v2 with a self-hosted profile or connect it to platform metadata in a hybrid workflow.
 
-Link the project context using `dbt_cloud.yml` and the project settings for the installed version. Keep the credential file private. Platform deferral can resolve unbuilt upstream references against a successful staging or production manifest. The VS Code extension adds diagnostics and navigation around local development.
+| Interface | Where dbt runs | Connection context |
+| --- | --- | --- |
+| dbt platform CLI | dbt platform development infrastructure | Your platform session identifies the project and development environment. The platform supplies the warehouse credentials and environment variables. |
+| Local dbt v2 CLI | On your machine | `profiles.yml` sets the target. Your machine must be able to reach the warehouse. In the lab the adapter opens a local DuckDB file. |
+| Official dbt VS Code extension | Local dbt v2 and its language server | A local profile connects directly to the data platform. In a connected project, the extension can also use platform metadata for features such as deferral. |
 
 ```mermaid
 flowchart TD
-    A["Local terminal or editor"]
-    B["Project and credential context"]
-    C["Deferred environment metadata"]
-    D["Developer schema execution"]
-    A --> B --> C --> D
+    A["Developer invokes dbt"] --> B["Platform CLI in a terminal"]
+    A --> C["Local CLI or VS Code extension"]
+    B --> D["Managed development environment and credentials"]
+    C --> E["Local engine and profiles.yml"]
+    D --> F["Adapter connects from platform infrastructure"]
+    E --> G["Adapter connects from the workstation"]
 ```
+
+Both CLIs can install an executable called `dbt`. Use `command -v dbt` and `dbt --version` in the relevant terminal. If both are installed, give one an alias or invoke it by absolute path. In VS Code, also check the extension's configured engine path and environment variables. An editor process can have different variables from its integrated terminal.
+
+For managed setup, download `dbt_cloud.yml` from your platform account and follow the CLI or extension guide to select the project context. Keep the file private. In the hybrid VS Code workflow, dbt can use that context to populate non-sensitive fields in your local profile. The local adapter still needs a working warehouse login and network route. The language server adds editor features such as diagnostics, navigation and lineage. Availability depends on the engine and analysis mode.
 
 ## Practice
 
-With a connected development environment, compile a downstream model and compare the relation names with deferral enabled and disabled. With the DuckDB lab, sketch the same comparison and identify the production artifact you would need.
+**With a platform project**, choose an existing downstream model with a materialized parent that has been built in staging or production, and use a development schema where that parent is absent. Use `dbt environment show` to verify the project context. Compile only the downstream model with the platform CLI's default deferral, then add `--no-defer` and compile again. Compare the upstream relation in the rendered SQL. With deferral, an eligible unselected parent can resolve to the location recorded by a successful staging or production job. The development credentials still need read access to that relation.
+
+**With DuckDB**, reproduce the same relation switch locally using full dbt v2. In a fresh copy of the four [starter files](0004-adapters-profiles-and-the-local-shop-lab.md), add this output under `outputs` beside `dev`, leaving `dev` as the default. The two schemas share one database file so the dev connection can read the baseline relation.
+
+```yaml
+    baseline:
+      type: duckdb
+      path: ./shop.duckdb
+      schema: baseline
+      threads: 2
+```
+
+```bash
+dbt build --profiles-dir . --target baseline --select +stg_orders
+mkdir -p baseline-artifacts
+cp target/manifest.json baseline-artifacts/
+dbt compile --profiles-dir . --select stg_orders
+dbt compile --profiles-dir . --select stg_orders --defer --state baseline-artifacts
+```
+
+The first compile's `from` points to `main.raw_orders`. The second points to `baseline.raw_orders` because the seed is unselected and absent from `main`. Save the baseline manifest outside `target/` so the dev compile can write its own manifest. The saved file supplies the relation location. The database still holds the rows.
 
 ## Recall
 
-If credentials work in Studio but fail in your local editor, which network and credential paths would you compare?
+1. Studio can query a warehouse table, but VS Code on your laptop cannot. Which connection details would you compare?
+2. Why might turning on deferral leave a compiled `ref()` pointing to development?
 
-[Platform deferral](https://docs.getdbt.com/docs/platform/about-defer) · [Local editor setup](https://docs.getdbt.com/docs/configure-dbt-extension)
+??? note "Answer guidance"
+    1. Compare the actual target, warehouse role and authentication method, plus network reachability from the host running dbt. Studio uses platform infrastructure. The local extension uses the workstation's connection and a local profile.
+    2. An upstream node selected in the current invocation resolves locally. With default deferral precedence, an existing development relation can also win for an unselected node.
+
+[Platform CLI installation](https://docs.getdbt.com/docs/platform/dbt-cli-installation) · [Hybrid development](https://docs.getdbt.com/guides/dbt-platform-local-workflow) · [Local editor setup](https://docs.getdbt.com/docs/configure-dbt-extension) · [Platform deferral](https://docs.getdbt.com/docs/platform/about-defer)
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |

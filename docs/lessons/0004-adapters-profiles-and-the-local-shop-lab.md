@@ -1,26 +1,30 @@
 # Adapters, profiles and the local shop lab
 
-Adapters manage connections, quote identifiers, implement materializations, and supply platform-specific macros. Your SQL still has to work in the target dialect. Core v1 installs adapters separately. Supported v2 adapters ship with the distribution, and availability varies.
+The dbt engine works out what to build. An adapter connects it to a particular data platform, handles dialect details such as identifier quoting, and implements platform-specific materializations and macros. The model's SQL still needs to run on that platform. Core v1 adapter plugins are Python packages. In v2, the supported adapters ship with the distribution, though some drivers are fetched separately. Verify adapter and feature support for your exact release.
+
 | Core v1 adapter | Connection and execution concepts |
 | --- | --- |
-| `dbt-snowflake` | Account, role, warehouse, database and schema. Role grants and warehouse compute are separate concerns. |
-| `dbt-bigquery` | Project, dataset, location, service account or OAuth. Inspect partition pruning and bytes processed. |
-| `dbt-databricks` | Host, HTTP path, catalog and schema. Check compute access and Delta materialization support. |
-| `dbt-postgres` | Host, port, database, schema and role. Consult the v2 adapter matrix before migrating. |
-| `dbt-duckdb` | Embedded database file. The v2 DuckDB adapter supports the hands-on lab. |
+| `dbt-snowflake` | Account, role, warehouse, database and schema. The role governs access and the warehouse provides compute. |
+| `dbt-bigquery` | Project, dataset and location, plus authentication such as a service account or OAuth. |
+| `dbt-databricks` | Host and HTTP path identify the compute endpoint. Catalog and schema locate relations. |
+| `dbt-postgres` | Host, port, database, schema and role. Check v2 support before migrating this project. |
+| `dbt-duckdb` | Embedded database, backed by a local file in this course. dbt v2 includes the DuckDB adapter and a driver for the starter. |
 
 ```mermaid
 flowchart TD
-    A["Profile target"]
-    B["Adapter and credentials"]
-    C["Database connection"]
-    D["Development schema"]
-    A --> B --> C --> D
+    A["dbt_project.yml selects profile shop_lab"] --> B["profiles.yml selects target dev"]
+    B --> C["type: duckdb selects the adapter"]
+    C --> D["path: ./shop.duckdb opens a local file"]
+    D --> E["schema: main locates raw_orders and stg_orders"]
 ```
+
+The `profile` key in `dbt_project.yml` selects a named profile. Within that profile, `target: dev` chooses the default output and `--target` can choose another. An output holds the connection and default schema. `threads` limits concurrent work on eligible nodes, so dependent nodes still wait for their parents.
 
 ## Practice
 
-Install the full dbt v2 CLI from the official installer docs. Create a separate `shop_lab` directory, then put these files in it.
+Install the full dbt v2 CLI. DuckDB runs in process and this file-backed target needs no account or credentials. [Install dbt v2](https://docs.getdbt.com/docs/local/install-dbt)
+
+In a separate `shop_lab` directory outside this course repository, create the four files below, including the `seeds` and `models` directories.
 
 `dbt_project.yml`
 
@@ -76,13 +80,20 @@ dbt build --profiles-dir . --select +stg_orders
 dbt show --profiles-dir . --select stg_orders
 ```
 
-Expect three staged rows. Run later lab commands from this directory and append `--profiles-dir .` to use the local profile. Keep the generated database, build output, and any real credentials out of Git.
+Check that the CLI reports v2 and that `dbt debug` reports a successful connection. The build should load `raw_orders` and then create the `stg_orders` view in `main`. In the preview, check for order IDs 1, 2 and 3, with paid orders 1 and 3 totaling 3,000 cents. Row order can vary.
+
+Run later lab commands from `shop_lab`. Use `--profiles-dir .` to select the lab profile explicitly. To use the shorter commands in later lessons, run `export DBT_PROFILES_DIR="$PWD"` in your lab shell. Keep the generated database, build output and any real credentials out of Git.
 
 ## Recall
 
-Which profile field controls the schema written by this run, and how would a separate database file isolate another learner?
+1. Which keys choose the adapter, the database file and the schema?
+2. What can two learners change to keep their lab data independent? What happens if they use an in-memory database across several commands?
 
-[Install dbt v2](https://docs.getdbt.com/docs/local/install-dbt) · [DuckDB setup](https://docs.getdbt.com/docs/local/connect-data-platform/duckdb-setup) · [Adapter matrix](https://docs.getdbt.com/docs/supported-data-platforms)
+??? note "Answer guidance"
+    1. In the selected output, `type` chooses the adapter, `path` points DuckDB at a file, and `schema` sets the default namespace for the relations.
+    2. Use separate working directories with separate `shop.duckdb` files, or set a distinct file path in each profile. An in-memory database loses its relations at the end of each invocation.
+
+[DuckDB setup](https://docs.getdbt.com/docs/local/connect-data-platform/duckdb-setup) · [Supported data platforms](https://docs.getdbt.com/docs/supported-data-platforms)
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
