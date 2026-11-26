@@ -23,21 +23,23 @@ flowchart TD
 
 ## Preserving ephemeral artifacts and choosing retry behavior
 
-Because Cloud Run's disk disappears on exit, ship `target/manifest.json`, `target/run_results.json`, and `logs/dbt.log` to a Cloud Storage bucket keyed by Cloud Run's built-in environment variables (`CLOUD_RUN_EXECUTION`, `CLOUD_RUN_TASK_INDEX`, `CLOUD_RUN_TASK_ATTEMPT`) before exiting. Preserve dbt's exit status so Workflows still catches failures:
+Because Cloud Run's disk disappears on exit, ship `target/manifest.json`, `target/run_results.json`, and `logs/dbt.log` to a Cloud Storage bucket keyed by Cloud Run's built-in environment variables (`CLOUD_RUN_EXECUTION`, `CLOUD_RUN_TASK_INDEX`, `CLOUD_RUN_TASK_ATTEMPT`) before exiting. This wrapper assumes the image includes `gsutil`, the job sets `ARTIFACT_BUCKET`, and the runtime identity can create objects there. The plain Python image in lesson 0042 needs those additions to use this example. Preserve dbt's exit status so Workflows still catches failures:
 
 ```bash
 #!/usr/bin/env bash
 set +e
 dbt build --profiles-dir /app --select +fct_orders
 EXIT_CODE=$?
-gsutil -m cp target/manifest.json target/run_results.json \
-  "gs://${ARTIFACT_BUCKET}/runs/${CLOUD_RUN_EXECUTION}/${CLOUD_RUN_TASK_ATTEMPT}/" || true
+gsutil -m cp target/manifest.json target/run_results.json logs/dbt.log \
+  "gs://${ARTIFACT_BUCKET}/runs/${CLOUD_RUN_EXECUTION}/${CLOUD_RUN_TASK_INDEX}/${CLOUD_RUN_TASK_ATTEMPT}/" || true
 exit "$EXIT_CODE"
 ```
 
 Distinguish **Cloud Run `--max-retries`** from **`dbt retry`**: Cloud Run task retries restart the entire container command from scratch (risking duplicate writes on append models or hooks if not idempotent), whereas `dbt retry` resumes only unbuilt/failed nodes using a preserved `run_results.json` (useful interactively or with restored artifacts). Keep `--max-retries=0` unless every selected write and hook is strictly idempotent.
 
 ## Practice
+
+**Without cloud logs**, use this incident for step 2: Scheduler accepted the trigger, the container started, BigQuery built the fact, then `paid_orders_have_positive_total` failed for order 1. Identify the first failing layer and the evidence to retain. The test failure points to the data and committed fact. Retrying the same image and seed would repeat the failure.
 
 ### Steps
 
@@ -54,19 +56,19 @@ gcloud logging read \
 
 2. Design a production runbook entry covering:
    - Run correlation keys: Cloud Run `execution_name`, `CLOUD_RUN_TASK_ATTEMPT`, immutable image `@DIGEST`, dbt `invocation_id`, data interval, and BigQuery `job_id` (linked via `query-comment` in `dbt_project.yml`).
-   - Ephemeral artifact retention: uploading to GCS per `${CLOUD_RUN_EXECUTION}/${CLOUD_RUN_TASK_ATTEMPT}` so retries never overwrite attempt 0 failure evidence, and updating the shared Slim CI baseline only after a validated `0` exit.
+   - Ephemeral artifact retention: uploading to GCS per `${CLOUD_RUN_EXECUTION}/${CLOUD_RUN_TASK_INDEX}/${CLOUD_RUN_TASK_ATTEMPT}` so retries never overwrite attempt 0 failure evidence, and updating the shared Slim CI baseline only after a validated `0` exit.
    - BigQuery recovery: adapt [lesson 0040](0040-capstone-incident-drill-and-portfolio-review.md)'s late-correction drill to BigQuery partitioned tables (bounded partition overwrite or `merge`, serialized against cron runs, verified by key reconciliation and totals).
 
 **Expected result.** Your runbook traces failures across all four layers, locates prior known-good digests and data intervals, and verifies repairs via key diffs and revenue totals.
 
 ## Recall
 
-1. Why must each Cloud Run task attempt upload `manifest.json` and `run_results.json` to a unique path (`${CLOUD_RUN_EXECUTION}/${CLOUD_RUN_TASK_ATTEMPT}`) rather than overwriting a shared `latest/` path?
+1. Why must each Cloud Run task attempt upload `manifest.json` and `run_results.json` to a unique path (`${CLOUD_RUN_EXECUTION}/${CLOUD_RUN_TASK_INDEX}/${CLOUD_RUN_TASK_ATTEMPT}`) rather than overwriting a shared `latest/` path?
 2. How can an operator link a slow or timed-out Cloud Run dbt execution to the exact BigQuery SQL query consuming slots?
 3. Why did the wrapper script capture `EXIT_CODE=$?` before running `gsutil cp` and end with `exit "$EXIT_CODE"`?
 
 ??? note "Answer guidance"
-    1. Overwriting a shared path destroys the failed attempt's `run_results.json` and `manifest.json` needed for root-cause analysis, and can corrupt a Slim CI baseline with unbuilt code. Keying by execution and attempt isolates every run's evidence.
+    1. Overwriting a shared path destroys the failed attempt's `run_results.json` and `manifest.json` needed for root-cause analysis, and can corrupt a Slim CI baseline with unbuilt code. Use execution name, task index and attempt together. Different tasks in the same execution can both have attempt 0.
     2. Configure `query-comment` in `dbt_project.yml` to embed dbt `invocation_id`, model `node_id`, and `CLOUD_RUN_EXECUTION` into SQL comments, then inspect BigQuery `INFORMATION_SCHEMA.JOBS` to separate BigQuery execution/slot wait from container runtime.
     3. If `gsutil cp` ran without saving `$?`, its exit code `0` would mask dbt's failure and trick Cloud Run and Workflows into marking a broken build green.
 

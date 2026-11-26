@@ -27,7 +27,7 @@ flowchart TD
 ## Partial parsing and build vs run
 
 - **Partial parsing (`target/partial_parse.msgpack`).** Parsing large projects from scratch on every command is slow. dbt caches parsed state and only reparses modified files on the next run. Pass `--no-partial-parse` if an invocation ignores an external change such as a modified environment variable.
-- **`dbt run` vs `dbt build`.** `dbt run` executes models only. `dbt build` runs seeds, snapshots, models, and tests together in DAG order. In `dbt build`, each resource's tests execute immediately after the resource builds, so a failing upstream test skips downstream models before bad data propagates. Each command runs any earlier parse and compile step it needs, so you can invoke `dbt build` directly.
+- **`dbt run` vs `dbt build`.** `dbt run` executes models only. `dbt build` runs seeds, snapshots, models, and tests together in DAG order. For a selected SQL model, dbt runs its selected unit tests first, materializes the model, then runs its selected data tests. A blocking data test can skip downstream models even though the tested relation already exists. [Build order](https://docs.getdbt.com/reference/commands/build) Each command runs any earlier parse and compile step it needs, so you can invoke `dbt build` directly.
 
 ## Practice
 
@@ -37,19 +37,19 @@ Use a fresh copy of the four starter files from [the DuckDB lab](0004-adapters-p
 
 ### Steps
 
-Run the three lifecycle commands one at a time from your lab directory. These commands work with Core v1 plus `dbt-duckdb` or with full dbt v2.
+Start with parse and compile in your fresh lab directory. These commands work with Core v1 plus `dbt-duckdb` or with full dbt v2.
 
 ```bash
 dbt parse --profiles-dir .
 dbt compile --profiles-dir . --select stg_orders
-dbt build --profiles-dir . --select +stg_orders
 ```
 
 Pause after each command and verify its evidence:
 
 1. **After parse.** Open `target/manifest.json`, locate `model.shop_lab.stg_orders`, and confirm `depends_on.nodes` includes `seed.shop_lab.raw_orders`.
 2. **After compile.** Open `target/compiled/shop_lab/models/stg_orders.sql` and confirm the `from` clause names the DuckDB relation for `raw_orders`. Notice `target/compiled/` contains only the `select` statement.
-3. **After build.** Open `target/run_results.json` and confirm `seed.shop_lab.raw_orders` succeeded before `model.shop_lab.stg_orders`. Check `target/run/shop_lab/models/stg_orders.sql` to see the `create view` statement sent to DuckDB.
+3. **Before build.** Run the catalog query below and record its result. Then run `dbt build --profiles-dir . --select +stg_orders`.
+4. **After build.** Open `target/run_results.json` and confirm `seed.shop_lab.raw_orders` succeeded before `model.shop_lab.stg_orders`. Check `target/run/shop_lab/models/stg_orders.sql` to see the `create view` statement sent to DuckDB.
 
 Verify when DuckDB actually receives the relation by running this query right after `compile` and again after `build`:
 
@@ -68,7 +68,7 @@ dbt show --profiles-dir . --inline "select table_type from information_schema.ta
 ??? note "Answer guidance"
     1. Core v1 compilation renders Jinja text and resolves relation references without validating column names against the warehouse SQL dialect. The database reports the missing column only when SQL executes.
     2. `target/compiled/` stores the rendered `select` query for inspection. `target/run/` stores the full DDL or DML statement (such as `create view` or `create table`) executed against the data platform.
-    3. `target/manifest.json` records `depends_on` graph edges. `dbt build` runs tests immediately after each resource builds and skips downstream dependents if an upstream test fails.
+    3. `target/manifest.json` records `depends_on` graph edges. `dbt build` runs selected data tests after materializing the model and skips downstream dependents if an upstream test fails.
 
 [dbt command reference](https://docs.getdbt.com/reference/dbt-commands) · [dbt artifacts reference](https://docs.getdbt.com/reference/artifacts/dbt-artifacts)
 

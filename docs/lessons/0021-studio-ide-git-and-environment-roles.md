@@ -30,6 +30,8 @@ flowchart TD
 - **Preview** executes the query (with a row limit) using your personal dev role. Passing a tiny preview does not prove the whole dataset passes tests.
 - **Build** runs selected models and tests into your personal schema. Verify the target schema and release track before comparing Studio results with a production run. [IDE user interface](https://docs.getdbt.com/docs/platform/studio-ide/ide-user-interface) · [dbt show](https://docs.getdbt.com/reference/commands/show)
 
+Follow a single edit across three copies of the model. Saving makes the edit available to your Studio workspace. Committing and pushing puts it on the remote branch for PR checks. The production job uses the commit on its configured deployment branch. When two runs disagree, record the SHA and any unsaved or uncommitted changes before comparing the SQL.
+
 ## Practice
 
 ### What you need

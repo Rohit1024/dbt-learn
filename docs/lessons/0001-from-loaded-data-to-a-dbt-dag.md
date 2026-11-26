@@ -37,6 +37,8 @@ Write down a model's **grain** (what a single row represents) before writing its
 !!! note "The course fixture"
     In [the DuckDB lab](0004-adapters-profiles-and-the-local-shop-lab.md), `raw_orders` is a CSV seed managed by dbt so you need no external loader. Staging therefore calls `ref('raw_orders')` and can load the seed as an upstream dependency.
 
+**Trace one order.** Order 1 is worth 1,250 cents. Suppose it has two line items. Sketch the rows after joining orders to items on `order_id`. The joined rows both carry 1,250, so summing the order amount gives 2,500 cents for that order. Grouping the items by order before the join gives one matching row. Which side of that join would you test for uniqueness?
+
 ## Practice
 
 ### What you need

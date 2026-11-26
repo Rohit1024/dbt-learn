@@ -50,6 +50,8 @@ Configure test behavior with these resource configs:
 - **`where`.** Restrict the test scan to recent partitions or relevant rows (for example `where: "status = 'paid'"`).
 - **`store_failures: true` and `limit:`.** Save failing rows into an audit schema (`--store-failures`) for debugging, capping rows if sensitive or huge. [Severity](https://docs.getdbt.com/reference/resource-configs/severity) · [Build](https://docs.getdbt.com/reference/commands/build)
 
+Design the failure row before writing the assertion. For the rule “every paid order has a positive amount,” a pending order with zero cents is outside the rule, a paid order with zero cents violates it, and a paid order with a missing amount also violates it. In SQL a comparison with null evaluates to unknown. Include an explicit null check to return that last row.
+
 ## Practice
 
 ### What you need

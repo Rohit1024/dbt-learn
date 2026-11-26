@@ -37,6 +37,8 @@ flowchart TD
 
 `generate_surrogate_key` casts each input column to string, replaces `null` with a fixed sentinel by default, concatenates, and hashes. Never pass extra columns (such as `customer_id`) just to force uniqueness if your grain should be `order_id`, or duplicate orders with different customers will quietly pass! When upgrading from older `surrogate_key`, compare persisted hashes first (note the legacy `surrogate_key_treat_nulls_as_empty_strings` flag changes null hashing).
 
+Hashing a key changes its representation. If two input rows both carry order 1 and customer 101, the same macro inputs produce the same hash on each row. If order 1 appears with two *different* customers, the composite hashes can differ while the promised one-row-per-order grain still fails. Keep a test on the business key.
+
 ## Practice with dbt v2 and DuckDB
 
 ### What you need

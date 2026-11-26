@@ -51,13 +51,13 @@ select order_id, total_cents
 from {{ ref('orders_domain', 'fct_orders') }}
 ```
 
-In the local walkthrough, simulate the cross-project query directly against `shop_lab` and document which platform environment and warehouse role would execute it in production:
+If you are following the local walkthrough, leave the consumer YAML and SQL out of `shop_lab`. Simulate the cross-project query directly against `shop_lab` and document which platform environment and warehouse role would execute it in production:
 
 ```bash
 dbt show --profiles-dir . --inline "select order_id, total_cents from {{ ref('fct_orders') }} order by order_id"
 ```
 
-**Expected result.** Selecting `finance_order_amounts` builds only the Finance model, reading the deployed Orders relation and returning **3 rows totaling 3,500 cents**.
+**Check each route.** In the local walkthrough the preview reads the existing shop fact and shows amounts of 1,250, 500, and 1,750 cents. In the connected Finance project, run `dbt build --select finance_order_amounts`. Inspect its compiled SQL for the deployed Orders relation and verify the same three amounts. Cross-project name resolution and Finance grants require the connected route.
 
 Diagnose the two common Mesh failure modes:
 

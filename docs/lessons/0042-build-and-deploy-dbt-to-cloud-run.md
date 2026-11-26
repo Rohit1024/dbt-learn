@@ -87,7 +87,8 @@ COPY dbt_project.yml profiles.yml ./
 COPY models/ models/
 COPY seeds/ seeds/
 COPY tests/ tests/
-ENTRYPOINT ["dbt", "build", "--profiles-dir", "/app", "--select", "+fct_orders"]
+ENTRYPOINT ["dbt"]
+CMD ["build", "--profiles-dir", "/app", "--select", "+fct_orders"]
 ```
 
 9. Build the image, capture its immutable `@DIGEST`, deploy the Cloud Run job, and execute it:
@@ -114,7 +115,14 @@ gcloud run jobs deploy "$JOB" --project="$PROJECT_ID" --region="$REGION" \
 gcloud run jobs execute "$JOB" --project="$PROJECT_ID" --region="$REGION" --wait
 ```
 
-(Without a GCP account, verify the container build locally on Linux/Mac with `docker build --platform linux/amd64 -t dbt-shop:local .` and confirm `dbt parse` succeeds inside the image.)
+**Local route.** From the fresh project directory, build the same image and parse with placeholder profile values. Docker appends these arguments to the `dbt` entrypoint in place of the default build arguments. A successful parse checks the packaged project. The cloud execution above also exercises BigQuery IAM and warehouse writes.
+
+```bash
+docker build --platform linux/amd64 -t dbt-shop:local .
+docker run --rm --platform linux/amd64 -e DBT_BQ_PROJECT=example-project \
+  -e DBT_BQ_DATASET=dbt_lab -e DBT_BQ_LOCATION=US \
+  dbt-shop:local parse --profiles-dir /app
+```
 
 10. **Verify in BigQuery.** Run this query in the BigQuery console (substituting your project and dataset):
 

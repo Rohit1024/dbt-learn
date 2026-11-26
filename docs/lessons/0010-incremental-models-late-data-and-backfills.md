@@ -8,8 +8,8 @@ Rebuilding a multi-billion-row event table from scratch every hour wastes comput
 
 1. The model is configured with `materialized='incremental'`.
 2. The target relation already exists in the warehouse as a table (not a view).
-3. `--full-refresh` was **not** passed (and `full_refresh: false` is not overridden).
-4. The query is running during execution (during parse/full-refresh compile without existing table, it renders the full branch).
+3. The effective full-refresh setting is false. An explicit model-level `full_refresh` config takes precedence over the CLI flag.
+4. dbt has finished parsing and can inspect the target relation. A compile against an existing incremental table can render the incremental branch too.
 
 Write SQL so both the full branch and the `{% if is_incremental() %}` branch emit the exact same columns and types.
 
@@ -36,6 +36,8 @@ Separate **which rows the `SELECT` reads** (the watermark and lookback filter) f
 | **`microbatch`** | Splits event-time ranges into independent fixed batches (`event_time`, `batch_size`, `lookback`). | Event-time models in dbt v1.9+ / v2. Lets you backfill specific time windows cleanly with `--event-time-start` and `--event-time-end`. |
 
 Test incoming `unique_key` values before writing, or deduplicate multiple versions in staging with a deterministic `row_number()` tie-breaker. An `update` outside the lookback window never enters the `SELECT` batch, so `unique_key` never touches that stale row. Note that Core v1's separate `dbt-duckdb` adapter documents its own strategy requirements (`delete+insert` works cleanly across DuckDB runs). [dbt-duckdb strategies](https://github.com/duckdb/dbt-duckdb#incremental-strategy-configuration)
+
+With a January 3 watermark at 10:00 and a two-day lookback, predict the branch for two corrections. January 1 at 10:00 qualifies because the filter includes equality. January 1 at 09:59 falls outside. Changing the write strategy cannot recover that second row until the read window includes it.
 
 ## Handling schema changes (`on_schema_change`)
 

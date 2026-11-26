@@ -42,8 +42,10 @@ flowchart TD
 When introducing a breaking interface change (such as replacing `total_cents` with `total_dollars`), publish multiple **versions** concurrently (`models/fct_orders_v1.sql` and `models/fct_orders_v2.sql`):
 
 - Consumers pinning `{{ ref('fct_orders', version=1) }}` stay safely on v1 even after you switch `latest_version: 2`.
-- By default, versioned files build as `fct_orders_v1` and `fct_orders_v2`. If legacy BI queries read `fct_orders` directly without `ref()`, set `alias: fct_orders` (or `defined_in: fct_orders`) on the active compatibility version so physical table names do not break SQL clients.
+- By default, versioned files build as `fct_orders_v1` and `fct_orders_v2`. If legacy BI queries read `fct_orders` directly without `ref()`, set `alias: fct_orders` on the active compatibility version so physical table names do not break SQL clients.
 - Add `deprecation_date: 2027-01-01` on retiring versions so dbt emits compiler warnings to remaining consumers before you delete v1. [Model versions](https://docs.getdbt.com/docs/mesh/govern/model-versions)
+
+Suppose v2 divides `total_cents` by 100 but keeps a numeric column with the old name and type. A schema contract can still pass. For order 1 the same dashboard would now read 12.50 where it expects 1,250. Giving dollars a new column name and comparing values for the same order makes the unit change reviewable.
 
 ## Practice
 

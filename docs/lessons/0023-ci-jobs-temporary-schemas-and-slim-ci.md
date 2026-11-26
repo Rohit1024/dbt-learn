@@ -29,6 +29,8 @@ flowchart TD
 - **Controlling CI cost and blast radius.** Editing a foundational staging model can cause `state:modified+` to select half the warehouse. Teams manage PR cost by sampling inputs when `target.name == 'ci'`, running `--empty` schema dry runs, excluding slow historical backfills, or carefully scoping downstream depth (`state:modified+1`).
 - **Concurrency and cross-schema tests.** PR CI runs execute concurrently across separate PR schemas without consuming deployment run slots (though they still use warehouse compute). Remember that a multi-parent `relationships` test might compare a modified PR child against a deferred production parent whose data timestamps differ! [Defer reference](https://docs.getdbt.com/reference/node-selection/defer)
 
+Write down the read and write destinations for this PR. Only the fact SQL changed. Its `from` clause should read the baseline staging relation. The new fact and its failing rows belong in the PR schema. If the baseline fact itself changes during this exercise, inspect the active target and its grants before retrying.
+
 ## Practice
 
 ### What you need

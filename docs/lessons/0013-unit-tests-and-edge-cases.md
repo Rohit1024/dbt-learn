@@ -16,7 +16,7 @@ flowchart TD
 
 Configure `given` and `expect` in YAML under `unit_tests:`:
 
-- **Fixture formats.** `dict` (inline YAML objects, the default) infers column types from existing upstream warehouse relations, so those upstream tables must exist (or specify `format: sql` / `format: csv` when inputs contain complex expressions or aren't materialized yet).
+- **Fixture formats.** Use `dict` for short inline rows and `csv` for tabular fixtures. Build the direct parents so dbt can inspect their schemas. Use `format: sql` for an ephemeral input and supply all its columns with explicit types. [Supported fixture formats](https://docs.getdbt.com/reference/resource-properties/data-formats)
 - **Projected expectations.** Under `expect.rows`, include only the columns relevant to the rule you are verifying.
 - **Overriding `is_incremental()`, `vars`, and `env_vars`.** Test incremental branches by setting `overrides` in YAML and providing a `this` fixture for existing target rows. [Unit test overrides](https://docs.getdbt.com/reference/resource-properties/unit-test-overrides)
 
@@ -40,6 +40,8 @@ unit_tests:
 ```
 
 Unit tests run under `dbt test` and `dbt build`. Select them explicitly with `--select test_type:unit` (or `--exclude test_type:unit` to run data tests alone).
+
+Choose a fixture that distinguishes correct SQL from a plausible mistake. An input of `paid` produces `paid` whether staging lowercases it or passes it through. An input of `PAID` produces different results under those two implementations. This is why editing the model in step 3 can expose a defect the original seed would miss.
 
 ## Practice
 
@@ -82,12 +84,12 @@ dbt test --profiles-dir . --select order_status_normalizes_case
 
 1. Which test catches an unexpected duplicate `order_id` in tomorrow's production load, a unit test or a data test?
 2. What should an incremental unit test put in `expect.rows` when the model selects two changed orders out of a million existing target rows?
-3. Why did the practice command run `dbt seed --select raw_orders` before running the unit test, and which fixture format avoids needing an existing upstream table?
+3. Why did the practice command run `dbt seed --select raw_orders` before running the unit test, and which fixture format would you use for an ephemeral input?
 
 ??? note "Answer guidance"
     1. A `unique` data test on the built relation catches live data defects. Unit tests only exercise fixed synthetic inputs against your SQL logic.
     2. Put only the two rows emitted by the model's `SELECT` query, not the existing million rows in `this`. Verify the final merged table separately using `dbt build` and data checks.
-    3. Inline `dict` rows infer column types from the materialized input table (`raw_orders`). Using `format: sql` supplies explicit SQL expressions and types in `given` without needing a pre-built upstream relation.
+    3. Inline `dict` rows infer column types from the materialized input table (`raw_orders`). For an ephemeral input, provide all its columns as SQL expressions in a `format: sql` fixture.
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |

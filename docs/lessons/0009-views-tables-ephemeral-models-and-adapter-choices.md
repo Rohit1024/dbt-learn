@@ -25,6 +25,8 @@ Two practical rules avoid surprises:
 - **Ephemeral models are invisible to SQL clients.** Because dbt builds no table or view for an ephemeral model, BI tools cannot query it directly, deeply chained ephemerals generate huge nested CTEs, and data tests on an ephemeral model inject its CTE into the test query.
 - **Verify adapter support for materialized views.** Refresh triggers and allowed SQL operators (`joins`, `window functions`, `on_configuration_change`) differ across Snowflake, BigQuery, Postgres, and DuckDB. Test representative read queries and build times on your target warehouse before switching a shared model. [Supported data platforms](https://docs.getdbt.com/docs/supported-data-platforms)
 
+**Follow a status edit.** Suppose ingestion changes order 2 to paid after the fact was built. With a view over the staging view, the next uncached query sees the new status. With a table, the next query sees the stored pending row until the fact rebuilds. An ephemeral helper inside that table's build SQL inherits the same wait for a rebuild.
+
 ## Practice
 
 ### What you need

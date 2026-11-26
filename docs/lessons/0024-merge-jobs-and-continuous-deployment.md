@@ -30,6 +30,8 @@ flowchart TD
 - **The incremental schema trap (CI passes, merge fails).** CI builds in an empty temporary schema (`is_incremental()` is `false`), so adding a column to an incremental model builds cleanly in CI. When the merge job runs against the live production table (`is_incremental()` is `true`), default `on_schema_change: ignore` drops your new column unless you configured `on_schema_change` or planned a backfill!
 - **Git revert vs data rollback.** Reverting a bad PR updates Git immediately, yet bad rows remain in the warehouse until a build or backfill repairs the affected tables.
 
+**Track two commits.** Suppose commit A built production and commit B merged a paid-only filter. After a parse of B, the manifest describes the filter but the stored fact still includes order 2. Comparing B with that parse of B yields no code change. A deployment baseline from the successful build of A preserves the difference the release job needs.
+
 ## Practice
 
 ### What you need

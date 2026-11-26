@@ -47,6 +47,8 @@ Selecting a model automatically pulls in attached data tests via **indirect sele
 !!! note "YAML selectors in v1 and v2"
     Store reusable job criteria in root `selectors.yml` and invoke them with `--selector orders_build`. In dbt v1.12+ and v2, use `--select "selector:orders_build,resource_type:model"` to compose a YAML selector with extra filters. The standalone `--selector` flag cannot combine with `--select` or `--exclude`. [YAML selectors](https://docs.getdbt.com/reference/node-selection/yaml-selectors) · [Selector methods](https://docs.getdbt.com/reference/node-selection/methods)
 
+Read `+fct_orders,resource_type:model` in two passes. Expand the fact and its ancestors first, including the seed. Intersect that set with models second, which removes the seed. Replacing the comma with a space requests a union and can include unrelated models. Preview the names before using the selector for a build.
+
 ## Practice
 
 ### What you need

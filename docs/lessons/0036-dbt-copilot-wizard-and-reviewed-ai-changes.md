@@ -24,6 +24,8 @@ Use this four-point review checklist on any AI-generated dbt PR:
 3. **Filter placement.** Check whether filters belong in a model `WHERE` clause (dropping rows for everyone) or inside conditional metric logic (preserving all-order facts).
 4. **Reproducible proof.** Require `dbt compile`, `dbt build`, a synthetic edge-case check (such as a [unit test](0013-unit-tests-and-edge-cases.md)), and row/aggregate reconciliation.
 
+Set aside one example before asking for a patch. For a batch containing a single pending order worth 500 cents, write down the expected fact count (1), total cents (500), and paid cents (0). A global paid-only filter drops the row. An unconditional sum counts all 500 cents as paid. This one example distinguishes both mistakes.
+
 ## Practice
 
 ### What you need

@@ -22,6 +22,8 @@ flowchart TD
 - **How catalog metadata updates.** Platform jobs on dbt v2 update Catalog automatically. Locally, run `dbt build --write-catalog` on v2 (or `dbt docs generate` on v1) to populate `target/catalog.json` with warehouse relation and column types. [Catalog metadata generation](https://docs.getdbt.com/docs/explore/explore-projects#generate-metadata) · [Documentation commands](https://docs.getdbt.com/reference/commands/cmd-docs)
 - **Column-level lineage limits.** Static SQL analysis distinguishes direct **passthrough** edges (column copied as-is), **transformation** edges (arithmetic, casts, `case` logic), and **opaque** edges (complex macros, UDFs, or `SELECT *` patterns that obscure column dependencies). Avoid `SELECT *` in staging and marts so column lineage stays complete. Also remember column lineage tracks selected column expressions, not `WHERE` filters or `JOIN` cardinality changes! [Column-level lineage](https://docs.getdbt.com/docs/explore/column-level-lineage)
 
+Review two changes to `total_cents`. Renaming the column can break a dashboard query at compile or execution time. Keeping its name but joining orders to line items can change the sum while leaving its column origin intact. Use column lineage to identify readers and compare row counts and totals to assess the second change.
+
 ## Practice
 
 ### What you need
@@ -51,7 +53,7 @@ dbt show --profiles-dir . --info column_lineage
 ```
 
 2. Trace `total_cents` from `raw_orders` through `stg_orders` to `fct_orders` in the column lineage output (if strict analysis is unavailable on your setup, inspect the `SELECT` lists in `stg_orders.sql` and `fct_orders.sql`).
-3. Find downstream exposure ownership in `target/manifest.json` (confirm `parent_map` links `exposure.shop_lab.orders_dashboard` to `model.shop_lab.fct_orders`, owned by `Analytics`).
+3. Find downstream exposure ownership in `target/manifest.json` (confirm `parent_map` links `exposure.shop_lab.orders_dashboard` to `model.shop_lab.fct_orders` and that the exposure lists `Analytics` as its owner).
 4. **With Catalog access.** Open the same model in your Staging or Production environment, record the latest job timestamp and status, and (on Enterprise/Enterprise+) view the `total_cents` column lineage card. Check the actual BI query on `orders_dashboard` to verify whether it reads `total_cents`.
 
 ## Recall

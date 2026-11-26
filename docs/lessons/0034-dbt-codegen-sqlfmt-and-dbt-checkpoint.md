@@ -22,6 +22,8 @@ flowchart TD
 
 Verify Python version pins and `manifest.json` schema compatibility (`metadata.dbt_schema_version`, v12 on dbt 2.0.12) across local machines and CI runners, and test every new hook with an intentional violation before making it required.
 
+Review the description that code generation cannot infer: “One row per order, including pending orders. Amounts are in cents.” A description hook can catch an empty field, yet it would also accept “Order data.” Have a reviewer use the description to predict what summing `total_cents` across all rows means.
+
 ## Practice with dbt v2, DuckDB, and Python tools
 
 ### What you need

@@ -34,6 +34,8 @@ Control analysis behavior with the `--static-analysis` flag or per-model `static
 
 The data platform remains responsible for runtime permissions and row-level execution.
 
+Before migrating the shop project, classify two defects. A misspelled `total_centz` is visible in the SQL and the upstream schema. Two rows with the same `order_id` can have perfectly valid names and types. Use the compile experiment below for the first defect and the [grain tests](0006-models-refs-and-project-configuration.md) for the second.
+
 ## Practice
 
 ### What you need

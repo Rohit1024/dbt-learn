@@ -27,6 +27,8 @@ When you configure `loaded_at_field` and `freshness`, dbt compares the newest ti
 - **Pair freshness with data completeness tests.** A single newly arrived row satisfies `max(loaded_at_field)` even if an earlier daily partition dropped.
 - **Decide alert vs block policies.** Use `warn_after` to notify the ingestion owner and `error_after` to halt downstream publication when stale inputs would mislead consumers.
 
+Suppose the loader delivers one of yesterday's 100 orders at 09:00 today. At 09:05 the newest load is five minutes old even though 99 orders are missing. Use the freshness threshold for delivery age and reconcile the batch count with ingestion's expected 100 to check completeness.
+
 ## Practice
 
 ### What you need

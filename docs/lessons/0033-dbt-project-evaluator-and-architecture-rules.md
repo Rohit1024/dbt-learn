@@ -27,6 +27,8 @@ flowchart TD
     Check --> Review["Remove the shortcut or accept a scoped exception"]
 ```
 
+Imagine the loader renames its amount column. In the intended graph, staging maps the new raw name back to `total_cents` and marts keep using their existing interface. Every mart that bypassed staging now needs its own fix. The direct-source rule detects that maintenance cost while the old data still passes row tests.
+
 ## Practice with dbt v2 native checks
 
 ### What you need

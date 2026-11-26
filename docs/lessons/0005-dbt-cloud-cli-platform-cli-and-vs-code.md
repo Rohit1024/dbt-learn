@@ -25,6 +25,8 @@ flowchart TD
 - **Avoid binary collisions.** Both the platform CLI and local dbt CLI install an executable named `dbt`. Run `command -v dbt` and `dbt --version` in each terminal and VS Code integrated shell to confirm which binary runs. Alias one binary or invoke it by full path if both are installed. In VS Code, verify the extension's engine path setting because editor processes can inherit different `PATH` and environment variables than your shell.
 - **Protect `dbt_cloud.yml`.** Managed CLI and hybrid VS Code setups download `dbt_cloud.yml` (typically to `~/.dbt/dbt_cloud.yml`). It stores your personal platform API token and project context, so keep it out of Git. In hybrid VS Code workflows, dbt can populate non-sensitive profile details from platform context while your local adapter still requires valid warehouse credentials and network reachability.
 
+**Trace the connection.** Two developers open the same Git commit. One uses Studio and one uses the local CLI. If only the local connection times out, identify the machine that opens each warehouse connection. Check the workstation's network route before changing the shared model SQL. If both connect but read different parents, compare the compiled relation names instead.
+
 ## Practice
 
 **With a platform project.** Pick a downstream model whose parent has already been built in staging or production, while your personal dev schema lacks that parent. Run `dbt environment show` to verify your project context. Run `dbt compile --select <model>` using the platform CLI's default deferral, then run `dbt compile --select <model> --no-defer` and compare the `from` clause in the compiled SQL.

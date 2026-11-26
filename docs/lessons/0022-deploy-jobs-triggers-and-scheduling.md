@@ -31,6 +31,8 @@ Two common scheduling traps cause silent stale dashboards:
 - **Hard freshness gate vs checkbox.** Putting `dbt source freshness` as step 1 in the command list halts the job before `dbt build` if any source exceeds `error_after`. Ticking the **Run source freshness** job checkbox runs freshness metadata before building, yet still lets `dbt build` proceed even when freshness errors! [Source freshness](https://docs.getdbt.com/docs/deploy/source-freshness)
 - **Do not use `state:modified+` as your daily data-refresh selector.** `state:modified+` compares code manifests. When new rows land overnight with zero SQL edits, `state:modified+` succeeds with zero models built! Use an explicit data-refresh selector (such as `dbt build --select +fct_orders` or `tag:daily`), or configure the separate [dbt State](0037-dbt-state-and-freshness-aware-orchestration.md) capability. [Enable dbt State](https://docs.getdbt.com/docs/deploy/dbt-state-enable-env-jobs)
 
+**Choose a start condition.** A 02:30 schedule fires while the 02:15 orders batch is still loading. The newest row could already have today's timestamp. If the dashboard needs the complete batch, wait for the loader's completion record for that batch ID, then run dbt and check the served count before releasing the extract.
+
 ## Practice
 
 ### Scenario

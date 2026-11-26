@@ -8,7 +8,7 @@ Pass `--state baseline` pointing to a directory containing a saved `manifest.jso
 
 - **`state:new`** matches resources whose `unique_id` does not exist in the baseline manifest.
 - **`state:modified`** matches new resources plus resources whose SQL body, configs, upstream macros, contracts, or tracked attributes changed (`state:modified+` adds downstream dependents).
-- **Sub-selectors.** Narrow the comparison when needed: `state:modified.body` (SQL/code body), `state:modified.configs`, `state:modified.persisted_descriptions`, `state:modified.relation`, `state:modified.macros`, and `state:modified.contract`. Use `state:unmodified` or `state:old` to select unchanged nodes.
+- **Sub-selectors.** Narrow the comparison when needed: `state:modified.body` (SQL/code body), `state:modified.configs`, `state:modified.persisted_descriptions`, `state:modified.relation`, `state:modified.macros`, and `state:modified.contract`. Use `state:unmodified` for unchanged nodes. Use `state:old` for all nodes whose IDs already existed, including edited models.
 - **`result:` selectors.** Combine `--state` with `result:error+` or `result:fail+` to inspect or rerun nodes that failed in a prior `run_results.json`. [Selector methods](https://docs.getdbt.com/reference/node-selection/methods)
 
 New rows loaded into an external warehouse table do **not** trigger `state:modified` because manifest comparison checks project code and metadata, not warehouse row data (small versioned seed CSVs are hashed and can trigger `state:modified`). [State comparison caveats](https://docs.getdbt.com/reference/node-selection/state-comparison-caveats)
@@ -59,7 +59,7 @@ dbt ls --profiles-dir . --state baseline/orders --select "state:modified+" --res
 dbt ls --profiles-dir . --state baseline/orders --select "state:modified.body" --resource-type model --output name
 ```
 
-**Expected result.** Both list `fct_orders` (and any downstream models you kept) while leaving `raw_orders` and `stg_orders` unselected.
+**Expected result.** Both list the edited `fct_orders`. Only `state:modified+` also selects its downstream models. If you kept `order_amounts` from lesson 0014, look for it in the first list. Its own SQL body did not change.
 
 3. Add a sibling target `module4_ci` under `shop_lab.outputs` in `profiles.yml` (sharing `./shop.duckdb` so both schemas are readable):
 

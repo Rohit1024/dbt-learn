@@ -89,6 +89,8 @@ dbt run-operation --profiles-dir . count_paid_orders
 4. **Inspect a hook.** Temporarily update `models/fct_orders.sql` to `{{ config(materialized='table', post_hook='analyze {{ this }}') }}`. Run `dbt --debug run --profiles-dir . --select fct_orders` and locate `analyze` followed by the qualified table name in the debug log right after table creation. **Restore** `models/fct_orders.sql` back to `{{ config(materialized='table') }}`. [DuckDB ANALYZE](https://duckdb.org/docs/stable/sql/statements/analyze.html)
 5. **Design a UDF on paper.** Write the SQL body and YAML signature for `is_reportable_status` (`string` in, `boolean` out; `'paid' -> true`, `'pending'` and `null -> false`), write the model call `{{ function('is_reportable_status') }}(status)`, and verify which object dbt builds first.
 
+For the UDF exercise, a possible SQL body is `coalesce(status = 'paid', false)`. Check it against each input in step 5. Without `coalesce`, a null status produces a null result. With the wrapper, the function returns a boolean for all three cases.
+
 ## Recall
 
 1. Where does dbt write compiled analysis SQL, and how can you inspect its output rows without materializing a table?

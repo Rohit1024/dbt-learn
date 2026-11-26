@@ -58,6 +58,7 @@ full outer join {{ ref('fct_orders_incremental') }} as i using (order_id)
 where s.order_id is null
    or i.order_id is null
    or s.total_cents is distinct from i.total_cents
+   or s.customer_id is distinct from i.customer_id
    or s.status is distinct from i.status
    or s.updated_at is distinct from i.updated_at
 ```
@@ -77,6 +78,8 @@ dbt test --profiles-dir . --select incremental_orders_match_staging
 
 In production, pause colliding writes before running a key- or partition-scoped backfill (or controlled full rebuild after checking adapter costs and grants). Trigger incremental backfills from an immutable ingestion timestamp (`_loaded_at`) or change log rather than mutable `updated_at`, because `max(updated_at)` freshness checks also miss backdated edits! [Incremental models](https://docs.getdbt.com/docs/build/incremental-models) · [Debugging playbook](../debugging/incremental-recovery.md)
 
+A matching grand total can still hide a customer attribution error. If order 1 moves from customer 101 to 102, both revenue totals and the order count stay the same. The per-order comparison checks `customer_id` as well as amount, status and timestamp. A successful repair leaves no changed, missing or extra orders.
+
 ## Portfolio postmortem review
 
 Compile your capstone portfolio package with the [release plan](0039-capstone-build-and-release-plan.md), incident `manifest.json` and `run_results.json`, Git SHA, recovery commands, and a concise postmortem covering:
@@ -92,12 +95,12 @@ Restore the original 3-row CSV and baseline build if reusing `shop_lab`.
 
 ## Recall
 
-1. Why did both the scheduled `dbt build` and a `max(updated_at)` freshness check stay green while `orders_dashboard` showed revenue 250 cents low?
+1. Why could both the scheduled `dbt build` and a `max(updated_at)` freshness check stay green while `orders_dashboard` showed revenue 250 cents low?
 2. What evidence proves a bounded backfill repaired the target safely without introducing duplicate keys?
 3. Why does a backdated `updated_at` edit (`2025-12-31`) also pose a problem for `order_history` if that snapshot uses `strategy: timestamp`?
 
 ??? note "Answer guidance"
-    1. The incremental query filtered only the latest 2 days around `2026-01-03`, skipping order 1 cleanly without error, while `max(updated_at)` stayed at `2026-01-03` so freshness looked current.
+    1. The incremental query filtered only the latest 2 days around `2026-01-03`, skipping order 1 cleanly without error, and the maximum timestamp stayed at `2026-01-03`. A freshness check at the same observation time would give the same result before and after the edit. Its pass or fail status depends on the threshold and check time.
     2. Key-level diffing against staging returns 0 mismatched rows, `unique` + `not_null` tests pass, revenue totals reconcile, and running the ordinary build a second time produces identical counts and sums.
     3. The `timestamp` strategy only captures versions when `updated_at` is strictly newer than the snapshot's stored `dbt_updated_at`. A backdated timestamp looks older than the existing open version and is ignored unless you use `strategy: check` or CDC.
 

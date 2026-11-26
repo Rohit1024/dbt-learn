@@ -37,6 +37,8 @@ flowchart TD
 
 During the parse phase, `execute` is `false`. Always wrap `run_query()` result access inside `{% if execute %}` so parsing does not crash on empty results, and add a `-- depends_on: {{ ref('fct_orders') }}` SQL comment if a `ref()` only executes conditionally inside an `if execute` block. Keep warehouse writes out of model expression macros. [Jinja and macros](https://docs.getdbt.com/docs/build/jinja-macros) · [execute](https://docs.getdbt.com/reference/dbt-jinja-functions/execute) · [run_query](https://docs.getdbt.com/reference/dbt-jinja-functions/run_query)
 
+**Read the template in two passes.** First substitute the macro argument: Jinja receives the string `total_cents` and emits that identifier into a SQL expression. Then evaluate one row: for order 1, DuckDB reads 1,250 from that column and the expression returns 12.50. Inspect compiled SQL for the first pass and preview rows for the second.
+
 ## Practice
 
 ### What you need

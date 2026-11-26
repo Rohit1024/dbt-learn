@@ -37,6 +37,8 @@ flowchart TD
 
 Never trigger a job blindly on network retries without tracking state. Claim a durable record keyed by `(environment, job, batch_id)` **before** sending `POST /run/`, persist the returned `data.id`, and reconcile run history by job, `cause`, and timestamp if a POST times out before returning an ID.
 
+**Trace a lost response.** The platform accepts a start request, but the connection closes before the caller saves the run ID. A second POST could start the batch twice. Store the batch claim before sending the first request. On redelivery, use its correlation value to look up the original run and leave publication on hold while the outcome is unknown.
+
 ## Practice
 
 ### What you need

@@ -31,6 +31,8 @@ Note that older platform **State-aware orchestration** (`freshness.build_after`)
 !!! note "Runtime and adapter support"
     dbt State requires a dbt account (including for self-managed deployments). It is built into dbt v2 and v1.13, with a plugin for v1.7 through v1.12. Verify supported data platforms before rolling out; DuckDB supports this lesson's local manifest simulation below. [dbt State setup](https://docs.getdbt.com/docs/deploy/dbt-state-setup)
 
+Walk through the local experiment one relation at a time. The staging view reads the changed raw row on its next query. The stored fact still contains the previous status until rebuilt. Selecting the seed again would reload the original CSV and erase your simulated warehouse update. This explains the narrower build in the exercise.
+
 ## Practice
 
 ### What you need

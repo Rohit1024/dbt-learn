@@ -34,6 +34,8 @@ flowchart TD
 
 **Retrying safely (`dbt retry`).** Core v1.6+ and dbt v2 provide `dbt retry`, which reads `target/run_results.json` from the failed invocation and resumes from the point of failure (dbt v2 also lets you override `--select`, `--exclude`, or `--selector` during retry). Always back up failed artifacts before another command overwrites `target/`. Before retrying an incremental `append` model or non-idempotent hook, verify no partial batch will be duplicated; reconcile keys and totals afterward. [dbt retry](https://docs.getdbt.com/reference/commands/retry)
 
+Read a failed build as a sequence. If staging succeeds, its data test fails, and the fact is skipped, the staging relation already contains the new batch. A stored fact from yesterday may still be queryable. Record both node statuses and the fact's batch date before deciding what to rerun.
+
 ## Practice
 
 ### What you need

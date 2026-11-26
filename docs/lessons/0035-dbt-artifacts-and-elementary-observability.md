@@ -50,6 +50,8 @@ on-run-end:
 
 Compare overlap before running both `dbt-artifacts` and Elementary together, and restrict access to telemetry tables/reports that expose compiled SQL or sample failing rows.
 
+Try correlating a failed scheduled run and its successful retry. Both attempts target the same orders batch and test node. Give each attempt its own invocation ID and attach both to the same incident. When a new batch fails tomorrow, its batch or scheduler run ID should open a separate incident even if the test name repeats.
+
 ## Practice with local dbt v2 and DuckDB
 
 ### What you need

@@ -33,15 +33,17 @@ Use a fresh or clean DuckDB copy of [shop_lab](0004-adapters-profiles-and-the-lo
                 field: status
 ```
 
-3. Merge the [semantic model](0026-metricflow-semantic-models-and-entities.md) and [revenue metrics](0027-metrics-time-spine-and-downstream-integrations.md) onto `fct_orders`, and add `metric('paid_revenue_cents')` alongside `ref('fct_orders')` in `models/exposures.yml` for `orders_dashboard` with an explicit consumer owner (remember real production period metrics need an immutable payment timestamp rather than `updated_at`).
+3. Merge the [semantic model](0026-metricflow-semantic-models-and-entities.md) and [revenue metrics](0027-metrics-time-spine-and-downstream-integrations.md) onto `fct_orders`, and add `metric('paid_revenue_cents')` alongside `ref('fct_orders')` in the [exposure definition](0019-model-documentation-exposures-and-ownership.md) for `orders_dashboard` with an explicit consumer owner (remember real production period metrics need an immutable payment timestamp rather than `updated_at`).
 4. Build the full capstone slice, archive evidence immediately, trace exposure lineage, and reconcile totals:
 
 ```bash
 dbt --version
-dbt build --profiles-dir . --select +fct_orders order_statuses +order_history
+dbt build --profiles-dir . --select +fct_orders order_statuses +order_history time_spine_daily
 mkdir -p evidence/release
 cp target/manifest.json target/run_results.json evidence/release/
 dbt ls --profiles-dir . --select +exposure:orders_dashboard
+jq '.metrics["metric.shop_lab.paid_revenue_cents"].depends_on.nodes' evidence/release/manifest.json
+dbt show --profiles-dir . --inline "select count(*) as open_versions from {{ ref('order_history') }} where dbt_valid_to is null"
 dbt show --profiles-dir . --inline "
 select
     count(*) as orders,
@@ -51,7 +53,7 @@ select
 from {{ ref('fct_orders') }}"
 ```
 
-**Acceptance.** Unit tests and data tests pass, `order_history` holds 3 open versions (`dbt_valid_to is null`), `+exposure:orders_dashboard` traces from `raw_orders` through `paid_revenue_cents`, and `fct_orders` returns **3 orders**, **3 distinct IDs**, **3,500 total cents**, and **3,000 paid cents**. Match `unique_id` values across `evidence/release/` and record the commit SHA, `invocation_id`, and numbers. [dbt artifacts reference](https://docs.getdbt.com/reference/artifacts/dbt-artifacts) · [Exposures](https://docs.getdbt.com/docs/build/exposures)
+**Acceptance.** Unit tests and data tests pass, `order_history` holds 3 open versions (`dbt_valid_to is null`), the exposure selector includes `raw_orders`, `stg_orders`, and `fct_orders`, and `fct_orders` returns **3 orders**, **3 distinct IDs**, **3,500 total cents**, and **3,000 paid cents**. On local dbt 2.0.12 the selector omits the metric from this listing. The separate manifest query should return `semantic_model.shop_lab.fct_orders` as the metric's parent. Match `unique_id` values across `evidence/release/` and record the commit SHA, `invocation_id`, and numbers. [dbt artifacts reference](https://docs.getdbt.com/reference/artifacts/dbt-artifacts) · [Exposures](https://docs.getdbt.com/docs/build/exposures)
 
 ## Review the release and rollback plan
 
@@ -60,11 +62,15 @@ Write a release plan around a sample PR that alters which statuses qualify as `p
 | Stage | Target, tooling, and gate |
 | --- | --- |
 | **Developer build** | Personal schema or DuckDB copy. Run `sqlfmt`, `dbt-checkpoint`, unit/data tests, and inspect compiled SQL + metric diff. |
-| **PR check (CI)** | Temporary PR schema. Run `sqlfmt --check`, `dbt check` (`dbt-project-evaluator`), `dbt parse` + `dbt-checkpoint`, and Slim CI (`dbt build --select state:modified+ --defer --favor-state`), bootstrapping with a full build if no baseline exists. |
+| **PR check (CI)** | Temporary PR schema. Run `sqlfmt --check`, `dbt check` (`dbt-project-evaluator`), `dbt parse` + `dbt-checkpoint`, and Slim CI (`dbt build --select state:modified+ --state baseline --defer --favor-state`, with the deployed manifest in `baseline/`), bootstrapping with a full build if no baseline exists. |
 | **Merge deployment (CD)** | Production service identity on `main`. Build modified nodes and tests, verify row counts and metric totals at the merged SHA, update baseline artifacts, and notify the dashboard owner. |
 | **Daily refresh** | Trigger after ingestion via API or schedule with a hard `dbt source freshness` gate. Run `dbt build --select +fct_orders` (serialized against merge writes), collect observability telemetry, and verify served batch totals before clearing alerts. |
 
 Name the source owner, transformation on-call, and dashboard owner, plus criteria to halt publication, which commit SHA to redeploy on rollback, and which tables require rebuilding after a bad release. [dbt deployments](https://docs.getdbt.com/docs/deploy/deployments) · [dbt scheduler](https://docs.getdbt.com/docs/deploy/job-scheduler) · [Support playbooks](../debugging/index.md)
+
+**Release decision.** The fixture has three distinct orders and the paid total is 3,000 cents. Would you approve a change that preserves both numbers but drops the pending order and adds a new zero-cent order? Compare the set of order IDs and each order's status and amount against staging. Record any intended differences alongside the dashboard owner's decision.
+
+To finish the release plan, choose one package from lessons 0031–0035. Name the defect it should catch, the version you would pin, and whether a failure should block the PR or alert the owner. Explain that decision for the orders dashboard.
 
 ## Recall
 

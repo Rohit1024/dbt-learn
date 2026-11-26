@@ -104,6 +104,10 @@ dbt show --profiles-dir . --select stg_orders
 
 Keep `shop_lab` as your main workspace for later lessons. Pass `--profiles-dir .` on commands or run `export DBT_PROFILES_DIR="$PWD"` in your terminal session to omit the flag.
 
+**Check your target.** If `debug` passes but a later terminal cannot find the orders, compare the working directory, active target and database path in both terminals. The starter uses a relative file path. Run the commands inside the same `shop_lab` directory each time.
+
+If you started here, you can now run the deferred [graph selection](0001-from-loaded-data-to-a-dbt-dag.md), [lifecycle](0002-dbt-core-v1-and-the-parse-to-run-lifecycle.md), and [static analysis](0003-fusion-dbt-v2-and-dbt-oss.md) exercises. Copy just the four starter files for a fresh lab. Copying the populated database changes experiments that assume a missing relation.
+
 ## Recall
 
 1. In `profiles.yml`, which keys pick the database adapter, the local DuckDB file, and the destination namespace?

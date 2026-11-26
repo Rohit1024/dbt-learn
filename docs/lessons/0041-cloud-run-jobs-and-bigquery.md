@@ -4,9 +4,9 @@ Teams running self-hosted dbt Core without a dedicated Kubernetes cluster or Air
 
 ## Separating dbt runner responsibilities from BigQuery
 
-- **Where work happens.** BigQuery executes every `SELECT`, `MERGE`, and test query, while the Cloud Run container parses `manifest.json`, resolves Jinja, orchestrates `threads` concurrent BigQuery API calls, and writes `target/` artifacts. Size container memory around project parse footprint (1 to 4 GiB for medium to large DAGs) rather than warehouse table size.
+- **Where work happens.** BigQuery executes every `SELECT`, `MERGE`, and test query, while the Cloud Run container parses project files, resolves Jinja, orchestrates `threads` concurrent BigQuery API calls, and writes `target/` artifacts. Size container memory around project parse footprint (1 to 4 GiB for medium to large DAGs) rather than warehouse table size.
 - **Task count vs `threads`.** Run **1 Cloud Run task** (`--tasks=1`) for a dbt DAG and tune parallelism through `threads` in `profiles.yml`. Increasing `--tasks` launches multiple identical containers that fight over the same target tables unless each task reads `CLOUD_RUN_TASK_INDEX` and selects disjoint slices.
-- **Stateless containers and timeouts.** The container filesystem disappears when the task exits, so stream logs to Cloud Logging and upload `target/` artifacts to Cloud Storage before exit. Cloud Run Jobs default to a 10-minute task timeout (configurable up to 24 hours via `--task-timeout`), so raise `--task-timeout` above your expected build duration.
+- **Stateless containers and timeouts.** The container filesystem disappears when the task exits, so stream logs to Cloud Logging and upload `target/` artifacts to Cloud Storage before exit. Cloud Run gives each CPU task attempt 10 minutes by default. Set `--task-timeout` above the expected build duration, up to 168 hours for CPU tasks. A retry starts a new attempt with its own time allowance. [Cloud Run task timeouts](https://docs.cloud.google.com/run/docs/configuring/task-timeout)
 
 ## Comparing GCP orchestration and compute options
 
@@ -37,6 +37,8 @@ Map the [shop release plan](0039-capstone-build-and-release-plan.md) onto Google
 1. Identify where the **Docker image** (Artifact Registry), **raw tables** (ingestion BigQuery dataset), **modeled tables** (`dbt_lab` dataset), and **run artifacts** (`manifest.json`, `run_results.json` in a GCS bucket) live.
 2. Draw the identity and execution boundaries separating the trigger principal (Scheduler/Workflows), the Cloud Run Jobs dbt runner (Runtime Service Account), and BigQuery compute/storage.
 3. Choose between a cron trigger gated by `dbt source freshness` and an Eventarc + Workflows trigger emitted after ingestion commits, and set a concrete `--task-timeout` and memory size for `shop_lab`.
+
+**Check your drawing.** Follow one execution from the trigger to the dashboard. The trigger can start the job, the runtime identity can submit BigQuery queries, and the dashboard reads the modeled dataset. Label which identity would receive a permission error if BigQuery denied the write. It should be the runtime identity.
 
 ## Recall
 

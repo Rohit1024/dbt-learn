@@ -30,6 +30,8 @@ An **exposure** registers an external consumer (a BI dashboard, ML feature table
 
 **Viewing docs.** In Core v1, `dbt docs generate` and `dbt docs serve` build and preview the static docs site from JSON artifacts. In dbt v2, `dbt docs generate` exports a site backed by the dbt Information Schema. On the managed platform, Catalog serves cross-environment lineage and supports automatic BI exposure discovery for connected tools. [Documentation commands](https://docs.getdbt.com/reference/commands/cmd-docs) · [Catalog](https://docs.getdbt.com/docs/explore/explore-projects)
 
+Try writing the dashboard owner's impact notice before opening the YAML. If order 1 changes from `1250` cents to `12.50` dollars and the dashboard still divides by 100, it displays about $0.13 for a $12.50 order. A column description explains the units and an exposure identifies the person who can verify the display.
+
 ## Practice
 
 ### What you need

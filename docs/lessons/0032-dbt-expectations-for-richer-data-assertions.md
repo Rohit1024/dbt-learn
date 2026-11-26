@@ -25,6 +25,8 @@ flowchart TD
 
 On large tables, scope checks with **`row_condition`** (for example `row_condition: "status = 'paid'"`) or `where` configs so assertions scan only relevant records.
 
+Before installing the package, classify three sample amounts under the proposed rules. Zero is inside the inclusive sandbox range. 100,001 exceeds it. A missing amount belongs to the separate null check. If Finance requires strictly positive amounts on paid orders, retain the conditional [business-rule test](0012-generic-and-singular-data-tests.md) as well.
+
 ## Practice with dbt v2 and DuckDB
 
 ### What you need

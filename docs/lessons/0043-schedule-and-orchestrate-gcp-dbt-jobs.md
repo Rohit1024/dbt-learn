@@ -19,6 +19,8 @@ flowchart TD
 
 ## Practice
 
+**Without a GCP sandbox**, trace the workflow below twice on paper. On the first run the API accepts the request and the job finishes successfully. On the second the API accepts it but dbt exits 1. Mark the last step reached on each path. Only the first trace should reach `mark_ready`.
+
 ### Trigger on a schedule with Cloud Scheduler
 
 1. Enable the Cloud Scheduler API, create `dbt-scheduler`, grant it `roles/run.invoker` on the job from [lesson 0042](0042-build-and-deploy-dbt-to-cloud-run.md), and create + trigger a daily UTC schedule:
@@ -34,7 +36,7 @@ gcloud scheduler jobs create http dbt-shop-daily \
   --project="$PROJECT_ID" --location="$REGION" \
   --schedule="0 6 * * *" --time-zone="Etc/UTC" \
   --uri="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB}:run" \
-  --http-method=POST --oauth-service-account-email="$SCHEDULER_SA" \
+  --max-retry-attempts=0 --http-method=POST --oauth-service-account-email="$SCHEDULER_SA" \
   --headers="Content-Type=application/json" --message-body='{}'
 
 gcloud scheduler jobs run dbt-shop-daily --project="$PROJECT_ID" --location="$REGION"
@@ -70,7 +72,7 @@ main:
           execution: ${execution.name}
 ```
 
-(To override arguments at runtime without rebuilding the image, pass `body: {overrides: {containerOverrides: [{args: ["--profiles-dir", "/app", "--select", "fct_orders"]}]}}` inside the connector `args:`.)
+To override arguments for one execution, pass `body: {overrides: {containerOverrides: [{args: ["build", "--profiles-dir", "/app", "--select", "fct_orders"]}]}}` inside the connector `args:`. Include the `build` subcommand because these arguments replace the image's entire `CMD`. The caller needs `run.jobs.runWithOverrides` on the job for this variant. [Execute jobs with overrides](https://docs.cloud.google.com/run/docs/execute/jobs)
 
 3. Pause the cron schedule, deploy, and execute the workflow:
 

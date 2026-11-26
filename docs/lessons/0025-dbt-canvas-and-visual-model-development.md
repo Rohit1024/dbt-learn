@@ -20,6 +20,8 @@ flowchart TD
     E --> F["Review generated SQL and test order IDs"]
 ```
 
+Predict the preview after each Canvas operator. With the original lookup, the inner join yields three orders, filtering reportable statuses leaves two, and removing the helper column still leaves two. If the preview already has four or more rows immediately after the join, inspect the lookup keys before changing the filter.
+
 ## Practice
 
 ### What you need

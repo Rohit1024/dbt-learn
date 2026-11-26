@@ -26,6 +26,8 @@ flowchart TD
 !!! note "Embedded YAML spec (v1.12+ / v2) vs standalone spec (v1.11)"
     The practice YAML below uses the modern **embedded spec** for dbt v2 and dbt v1.12 (including platform Latest), where `semantic_model:`, `entity:`, `dimension:`, and `metrics:` attach directly to a model under `models:`. Older v1.11 docs use a separate top-level `semantic_models:` block (`model: ref('fct_orders')`) with separate `entities:`, `dimensions:`, and `measures:` sections. Use the version picker in the official docs. [Semantic Layer YAML reference](https://docs.getdbt.com/reference/semantic-layer-reference) · [YAML spec migration](https://docs.getdbt.com/docs/build/latest-metrics-spec)
 
+**Trace a metric join.** Suppose customer 101 belongs to Retail and customer 102 belongs to Trade. The two orders for 101 contribute 1,750 cents to Retail and the one for 102 contributes 1,750 to Trade across all statuses. If the dimension contains two Retail rows for 101, its contribution doubles. Check the dimension's customer key before publishing that breakdown.
+
 ## Practice
 
 ### What you need

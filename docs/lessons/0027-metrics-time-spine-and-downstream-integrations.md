@@ -16,7 +16,7 @@ For example, in the embedded spec, a ratio metric over two simple metrics looks 
 
 ```yaml
 metrics:
-  - name: paid_order_share
+  - name: paid_revenue_share
     type: ratio
     numerator: paid_revenue_cents
     denominator: order_total_cents
@@ -31,6 +31,8 @@ flowchart TD
 ```
 
 A **time spine** is a calendar table with one continuous row per period (`date_day`) covering your reporting window. MetricFlow needs a time spine to fill missing calendar dates (`join_to_timespine: true` + `fill_nulls_with: 0`) and compute cumulative windows.
+
+Use the fixture to check the ratio's units. Two of three orders are paid, so the paid share by order count is about 66.7%. Those orders contribute 3,000 of 3,500 cents, so the paid share by value is about 85.7%. The ratio above answers the second question. On January 4 both sums are zero and a revenue share is undefined even though zero cents is a valid revenue total.
 
 ## Practice
 
@@ -156,7 +158,7 @@ mf query --saved-query orders_daily --start-time 2026-01-01 --end-time 2026-01-0
 
 ## Recall
 
-1. Why does averaging daily paid-order ratios give a different answer from asking MetricFlow for a `ratio` metric at `metric_time__month`?
+1. Why does averaging daily paid-revenue shares give a different answer from asking MetricFlow for a `ratio` metric at `metric_time__month`?
 2. A BI chart backed by MetricFlow omits January 4 when zero orders occurred that day. What four things do you inspect?
 3. When should a team configure `exports:` on a `saved_query` instead of relying purely on live Semantic Layer API queries?
 

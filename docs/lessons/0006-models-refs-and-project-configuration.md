@@ -31,6 +31,8 @@ dbt merges model configuration from least specific to most specific:
 
 If you set `+schema: marts`, dbt appends that suffix to your target schema (`main_marts` in dev) by default. Teams customize the `generate_schema_name` macro when production jobs should write directly to `marts` without the target prefix.
 
+For the starter rows, write the candidate keys on paper. The order IDs are `1, 2, 3`. The customer IDs are `101, 101, 102`. A uniqueness failure on the second list is expected at order grain. Grouping by customer would produce two rows and answer a different business question.
+
 ## Practice
 
 ### What you need

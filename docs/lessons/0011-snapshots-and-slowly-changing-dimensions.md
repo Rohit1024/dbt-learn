@@ -29,6 +29,8 @@ dbt adds metadata columns (renamable via `snapshot_meta_column_names`) to every 
 
 Treat validity as the half-open interval `[dbt_valid_from, dbt_valid_to)`. Query an as-of state with `dbt_valid_from <= as_of and (as_of < dbt_valid_to or dbt_valid_to is null)`.
 
+For order 2, draw the two observed versions on a timeline. The pending version ends at January 4 at 10:00 and the paid version starts then. A report for 09:59 selects pending. A report for 10:00 selects paid. Using an inclusive end such as `BETWEEN` would match both versions at 10:00.
+
 ## Deletes and preserving history
 
 - **Deletes (`hard_deletes`).** By default (`ignore`), dbt leaves the latest version open when a source key disappears. On supported adapters, `hard_deletes: invalidate` sets `dbt_valid_to`, and `new_record` also inserts a deleted version with `dbt_is_deleted`.

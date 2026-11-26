@@ -29,7 +29,7 @@ flowchart TD
 Follow three safeguards before parsing or storing artifacts:
 
 1. **Copy artifacts immediately after the build step.** Commands like `dbt docs generate`, `dbt compile`, or `dbt run-operation` overwrite files in `target/`, mixing evidence from different invocations. Archive `manifest.json`, `run_results.json`, and `logs/dbt.log` together alongside the Git SHA, target, and engine version, even on failures.
-2. **Match `invocation_id` and `dbt_schema_version`.** Confirm `metadata.invocation_id` matches between `manifest.json` and `run_results.json` before joining on `unique_id`, and check `metadata.dbt_schema_version` because artifact schemas evolve independently from CLI versions.
+2. **Identify the run and the file format.** Confirm `metadata.invocation_id` matches between `manifest.json` and `run_results.json` before joining on `unique_id`, and check `metadata.dbt_schema_version` for each artifact separately. A manifest and a results file have different schemas even when the same invocation wrote both.
 3. **Restrict archive permissions.** `manifest.json` contains raw and compiled SQL, which can expose business logic or hardcoded literals. [Manifest JSON](https://docs.getdbt.com/reference/artifacts/manifest-json) · [Run results JSON](https://docs.getdbt.com/reference/artifacts/run-results-json)
 
 ## Practice

@@ -34,6 +34,8 @@ Execute `dbt-shop-gate` against your initial `lab-001` image. Save the image `@D
 2. Execute `dbt-shop-gate` **twice** on the restored digest. Confirm both executions exit `0` and return `status: ready` with distinct Cloud Run execution names.
 3. Re-query BigQuery after each run and verify **3 distinct orders**, **3,500 total cents**, and **3,000 paid cents** both times.
 
+**Decide when to reopen the dashboard.** Identify the first point when a direct reader can safely query the restored fact. Updating the image leaves the failed run's rows in BigQuery. After the rebuild, compare the three order IDs and amounts with the baseline and confirm the paid sum. For a production source outside the image, also verify the input correction: rolling back code alone cannot restore a bad source row.
+
 ### Handoff and cleanup
 
 Write a brief release postmortem recording both `@DIGEST` values, execution IDs, BigQuery before/after totals, and why the failed run modified `fct_orders`. Sketch how the exact same image, `dbt-runtime` identity, and readiness gate would map onto Cloud Composer or Google Cloud Batch. Then delete the Cloud Scheduler job, Workflow, Cloud Run job, Artifact Registry images, and `dbt_lab` dataset to avoid unintended billing.

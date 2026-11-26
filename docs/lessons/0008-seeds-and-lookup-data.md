@@ -19,6 +19,8 @@ flowchart TD
 
 Before joining a fact table to a lookup seed, test two assumptions: the lookup key must be `unique` and `not_null` (so the join cannot multiply fact rows), and every fact key should map to a lookup row (checked with a `relationships` generic test or a singular left-join query).
 
+A lookup join needs two independent checks. For `paid, paid` on the lookup side, a paid order matches twice. For a missing `pending` mapping, a left join keeps order 2 with a null lookup value. Predict which defect the lookup's key test catches and which needs the coverage test in step 4.
+
 ## Practice
 
 ### What you need
