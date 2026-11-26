@@ -1,17 +1,19 @@
 # Deploy jobs, triggers and scheduling
 
-A deploy job is a reusable configuration in a deployment environment. It defines commands and triggers. A run is one execution of that configuration with a run ID, Git SHA, target, timestamps, step logs and artifacts. In **Orchestration → Jobs**, create a Deploy job, select its environment, enter the commands in order, and configure the trigger. Use **Run now** for a sandbox smoke test. [Deploy jobs](https://docs.getdbt.com/docs/deploy/deploy-jobs)
+Once code merges into your release branch, a **deploy job** runs dbt in a deployment environment (such as Staging or Production) to keep warehouse tables current. Each execution produces a run record with a unique run ID, checked-out Git SHA, target profile, step logs, and archived JSON artifacts. Under **Jobs** in **Orchestration**, configure the environment, ordered commands, triggers, timeout, and failure notifications (Slack, email, or webhook). [Deploy jobs](https://docs.getdbt.com/docs/deploy/deploy-jobs)
 
-| Trigger | Use it when |
+## Triggers, concurrency, and run slots
+
+| Trigger | When to use it |
 | --- | --- |
-| Schedule | You need a predictable cadence. For example, `30 2 * * *` enqueues a run daily at 02:30 UTC. |
-| Job completion | Another dbt deploy job owns the prerequisite. Select the upstream job and the status that should enqueue the next run, such as success. Check plan availability. |
-| Administrative API | The ingestion orchestrator can trigger dbt after the load commits. Record the upstream batch ID alongside the resulting dbt run ID. |
-| Run now | An operator is testing or recovering a job and has confirmed the target and input data. |
+| **Schedule** | Predictable cadence (for example, `30 2 * * *` runs daily at 02:30 UTC). Some teams also run a separate weekly `--full-refresh` schedule for incremental tables. |
+| **Job completion** | Chaining when another dbt deploy job owns upstream tables (pick the parent job and required status such as success, subject to plan support). |
+| **Administrative API** | Event-driven triggering immediately after your ELT loader finishes committing raw data. Log the upstream batch ID alongside the dbt run ID. |
+| **Run now** | Manual operator triggers for smoke tests, deployments, or incident recovery after verifying target and inputs. |
 
-A trigger enqueues work. Start time depends on run-slot capacity, whether the same job is already running, and setup time. The scheduler serializes runs of the same deploy job. Coordinate separate jobs that write the same relations yourself. Compare queue wait, prep time, and command duration when investigating a missed update. Job threads control work within a run, while run slots control concurrent jobs. [dbt scheduler](https://docs.getdbt.com/docs/deploy/job-scheduler)
+A trigger **enqueues** a run rather than guaranteeing instant start. Actual start depends on account **run slots** (concurrent jobs allowed across your plan) and queue serialization: the scheduler runs only one active execution of the same deploy job at a time. Note the distinction: `threads` controls parallel nodes *within* a single run, whereas run slots limit parallel *jobs*. Coordinate separate deploy jobs that write to the same schemas so they cannot collide. [dbt scheduler](https://docs.getdbt.com/docs/deploy/job-scheduler)
 
-For a hard freshness gate, put `dbt source freshness` first in the command list and configure a source with an error threshold. An error stops subsequent steps. The **Run source freshness** checkbox records freshness before the build and lets later steps run even on failure. Use a reliable load timestamp for the gate. Schedule an orders build with a selector that runs even when only data changes. `state:modified+` compares project manifests and can succeed with zero models built after a new load. The separate, account-dependent dbt State feature can take inputs' freshness into account. [Source freshness](https://docs.getdbt.com/docs/deploy/source-freshness) · [Deploy jobs](https://docs.getdbt.com/docs/deploy/deploy-jobs) · [Enable dbt State](https://docs.getdbt.com/docs/deploy/dbt-state-enable-env-jobs)
+## Freshness gates vs data-refresh selectors
 
 ```mermaid
 flowchart TD
@@ -24,37 +26,45 @@ flowchart TD
     E --> G["Verify the new batch in the published fact"]
 ```
 
+Two common scheduling traps cause silent stale dashboards:
+
+- **Hard freshness gate vs checkbox.** Putting `dbt source freshness` as step 1 in the command list halts the job before `dbt build` if any source exceeds `error_after`. Ticking the **Run source freshness** job checkbox runs freshness metadata before building, yet still lets `dbt build` proceed even when freshness errors! [Source freshness](https://docs.getdbt.com/docs/deploy/source-freshness)
+- **Do not use `state:modified+` as your daily data-refresh selector.** `state:modified+` compares code manifests. When new rows land overnight with zero SQL edits, `state:modified+` succeeds with zero models built! Use an explicit data-refresh selector (such as `dbt build --select +fct_orders` or `tag:daily`), or configure the separate [dbt State](0037-dbt-state-and-freshness-aware-orchestration.md) capability. [Enable dbt State](https://docs.getdbt.com/docs/deploy/dbt-state-enable-env-jobs)
+
 ## Practice
 
-Design a daily `Orders refresh` job. Assume ingestion aims to finish at 02:15 UTC and the new data should be queryable by 03:00 UTC. Choose an API trigger on successful load or a 02:30 UTC schedule with a blocking freshness gate. For example, a two-hour error threshold would reject yesterday's load at 02:30 UTC. Use a service identity that can read the inputs and write the orders schema, and specify who receives error and late-data alerts.
+### Scenario
 
-**With platform access.** Try the command `dbt build --select +fct_orders` in a sandbox deployment environment that contains the [shop lab](0004-adapters-profiles-and-the-local-shop-lab.md) and the [order fact](0006-models-refs-and-project-configuration.md). Use **Run now**, then record the run ID, SHA, wait and execution times, fact result, and target. The lab rebuilds its fixture seed. A warehouse project should point its staging model at the ingestion-owned source.
+Design a daily `Orders refresh` deploy job. Ingestion normally completes by 02:15 UTC, and dashboards must show fresh numbers by 03:00 UTC. Choose either an API trigger from the loader or a 02:30 UTC cron schedule gated by `dbt source freshness` as command 1 (for example, a 2-hour `error_after` rejects yesterday's stale batch). Assign a service identity that reads `raw` and writes `analytics`, plus alert owners for failed builds and late ingestion.
 
-**Without an account.** Use a disposable copy of the same lab with the original three orders. Run these commands from the lab directory:
+### Steps
+
+- **With platform access.** Create a sandbox deploy job running `dbt build --select +fct_orders` against a sandbox deployment environment holding [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md) and [`fct_orders`](0006-models-refs-and-project-configuration.md). Click **Run now** and record the run ID, Git SHA, queue/prep vs SQL execution time, and fact status.
+- **Without an account (local batch simulation).** Work in a disposable copy of `shop_lab` with the original 3 orders:
 
 ```bash
 dbt build --profiles-dir . --select +fct_orders
-# Inspect the build log or target/run_results.json before previewing.
 dbt show --profiles-dir . --inline "select count(*) as order_count from {{ ref('fct_orders') }}"
 ```
 
-Append the following row to the copy of `seeds/raw_orders.csv` to simulate the next ingestion batch. Run the two commands again.
+Append one new ingestion batch row to the copy's `seeds/raw_orders.csv`, then rerun both commands:
 
 ```csv
 4,103,paid,2000,2026-01-04 10:00:00
 ```
 
-Expect a successful fact build and a stored count that grows from three rows to four, then stays at four on a retry with the same input. Discard the copy after the exercise. In your job design, show what happens if ingestion fails and what an operator checks before retrying a failed build. A partially failed build may already have written some relations.
+**Expected result.** `fct_orders` builds cleanly and `order_count` increases from **3** to **4**, remaining **4** if you rerun the build on the same CSV. Document in your job design how operators handle an ingestion outage vs a failed dbt build step (noting partial upstream commits). Discard the disposable copy afterward.
 
 ## Recall
 
-1. Ingestion landed new rows, but the scheduled job succeeded without building a model. What configuration would you check first?
-2. How can a freshness failure and a successful final job status coexist?
+1. Ingestion loaded 10,000 new orders last night, and the scheduled deploy job succeeded in 3 seconds, yet `fct_orders` still holds yesterday's rows. Which job command configuration should you check first?
+2. How can a source freshness failure and a green `Succeeded` deploy job status appear on the same run?
+3. What is the difference between setting `threads: 8` on a job and having 4 account run slots?
 
-??? question "Answer guidance"
-
-    1. Check for a manifest-based selector such as `state:modified+`. Compare the selected nodes in the logs and use a recurring selector that covers the orders fact on every intended refresh.
-    2. The freshness checkbox runs a check that allows later steps to proceed. Put `dbt source freshness` first in the command list when a stale source should block publication.
+??? note "Answer guidance"
+    1. Check if the job uses `state:modified+` without data-aware dbt State. Because no SQL changed, manifest comparison selected zero models. Switch to an explicit data-refresh selector like `+fct_orders` or `tag:daily`.
+    2. The **Run source freshness** checkbox records freshness errors without halting subsequent build commands. Put `dbt source freshness` explicitly as the first command step when stale data must block downstream publication.
+    3. `threads: 8` lets one dbt run execute up to 8 independent DAG nodes concurrently. Run slots cap how many separate dbt jobs can execute simultaneously across the account.
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |

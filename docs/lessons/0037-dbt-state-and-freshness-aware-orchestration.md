@@ -1,16 +1,14 @@
 # dbt State and freshness-aware orchestration
 
-| Mechanism | Decision |
+Manifest comparison (`--state baseline --select state:modified+`) skips models when SQL code is unchanged, while naive hourly cron schedules rebuild every model even when upstream data did not arrive. **dbt State** bridges code state and data readiness by combining transformation changes, configs, target relation state, and upstream freshness signals to choose whether to **reuse**, **zero-copy clone** (where supported), or **rebuild** each selected model.
+
+## Comparing selection and freshness mechanisms
+
+| Mechanism | How it decides what to build |
 | --- | --- |
-| Manifest comparison with `--state baseline --select state:modified+` | Select project resources changed since a saved manifest and their descendants. A warehouse-only update leaves this comparison unchanged. |
-| dbt State | Within the requested selection, compare transformation logic, configuration, relation state and upstream freshness. Reuse an eligible relation, clone where supported, or build when reuse is unsafe. |
-| Source freshness | Compare the observed source load time with an age threshold. Use the result to alert or gate a job when ingestion is late. |
-
-dbt State can observe data changes through warehouse metadata or configured source freshness signals. `config.state.lag_tolerance` sets the lag a model can tolerate before a detected upstream change makes it due for a rebuild. For example, use `2h` for a model whose consumers can wait two hours between data-driven builds. `config.state.require_fresh_data_from` can require fresh data from `any` or `all` direct parents. Choose `all` when inputs must arrive together, and keep a separate ingestion deadline so a missing batch generates an alert. The older platform **State-aware orchestration** uses `freshness.build_after`. The two job toggles are mutually exclusive, and existing jobs may need explicit reconfiguration even after enabling dbt State on their environment. [About dbt State](https://docs.getdbt.com/docs/deploy/dbt-state-about) · [Migration guide](https://docs.getdbt.com/docs/deploy/dbt-state-migration) · [Enabling dbt State on environments and jobs](https://docs.getdbt.com/docs/deploy/dbt-state-enable-env-jobs)
-
-!!! note "Runtime and adapter support"
-
-    dbt State requires a dbt account, including for self-managed use. It is built into dbt v2 and v1.13, with a plugin available for v1.7 through v1.12. Check supported warehouses before piloting. DuckDB supports this lesson's local manifest exercise. [dbt State setup](https://docs.getdbt.com/docs/deploy/dbt-state-setup)
+| **Manifest comparison (`state:modified+`)** | Diffs project code and config against a saved `manifest.json`. Warehouse-only row updates go undetected. |
+| **dbt State** | Evaluates code, config, relation existence, and upstream data freshness together; reuses or clones safe relations and rebuilds stale or modified ones. |
+| **Source freshness (`dbt source freshness`)** | Compares source `loaded_at_field` against `warn_after` / `error_after` thresholds to alert or block stale ingestion. |
 
 ```mermaid
 flowchart TD
@@ -23,9 +21,25 @@ flowchart TD
     F --> G
 ```
 
+Tune dbt State policies on models with two configs:
+
+- **`config.state.lag_tolerance`** sets how old an upstream change can be before forcing a rebuild (for example `2h` lets consumers tolerate two-hour freshness to save warehouse compute).
+- **`config.state.require_fresh_data_from`** sets whether `any` or `all` direct parents must contain fresh data before rebuilding. Choose `all` when two feeds must align, and maintain a separate ingestion deadline alert so a silent missing feed does not stall publication unnoticed.
+
+Note that older platform **State-aware orchestration** (`freshness.build_after`) and **dbt State** are mutually exclusive job toggles; migrate existing jobs explicitly after enabling dbt State on an environment. [About dbt State](https://docs.getdbt.com/docs/deploy/dbt-state-about) · [Migration guide](https://docs.getdbt.com/docs/deploy/dbt-state-migration) · [Enabling dbt State on environments and jobs](https://docs.getdbt.com/docs/deploy/dbt-state-enable-env-jobs)
+
+!!! note "Runtime and adapter support"
+    dbt State requires a dbt account (including for self-managed deployments). It is built into dbt v2 and v1.13, with a plugin for v1.7 through v1.12. Verify supported data platforms before rolling out; DuckDB supports this lesson's local manifest simulation below. [dbt State setup](https://docs.getdbt.com/docs/deploy/dbt-state-setup)
+
 ## Practice
 
-Use a disposable copy of [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md) with [`fct_orders`](0006-models-refs-and-project-configuration.md) and the original fixture. Save a baseline outside `target/`. Simulate an ingestion write directly in DuckDB with `run-operation`, keeping the seed CSV and model code unchanged.
+### What you need
+
+Use a disposable copy of [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md) with [`fct_orders`](0006-models-refs-and-project-configuration.md) and the original three rows.
+
+### Steps
+
+1. Build the baseline and save its manifest outside `target/`, then simulate an upstream warehouse load directly in DuckDB (leaving `seeds/raw_orders.csv` and model SQL untouched):
 
 ```bash
 dbt build --profiles-dir . --select +fct_orders
@@ -41,25 +55,26 @@ select sum(case when status = 'paid' then total_cents else 0 end) as paid_revenu
 from {{ ref('fct_orders') }}"
 ```
 
-The selector finds no modified nodes. The regular fact build reads the updated data and yields **3,500 paid cents**. Temporarily change the projection in `fct_orders` from `status` to `upper(status) as status`. Repeat the listing and find `fct_orders` in the selection, then revert that edit and reseed and rebuild with the first command. Paid revenue returns to **3,000 cents**.
+**Expected result.** `state:modified+` returns an empty list (because code did not change), whereas the explicit `fct_orders` build picks up the updated row and raises `paid_revenue_cents` to **3,500**.
 
-For a managed pilot, use a supported warehouse and compare an ordinary scheduled job with dbt State enabled on an isolated target. Predict and record the decision for each scenario:
+2. Temporarily change `status` to `upper(status) as status` in `models/fct_orders.sql` and rerun `dbt ls --profiles-dir . --state baseline --select state:modified+`. Confirm `fct_orders` now appears. Revert that edit, reseed, and rerun `dbt build --profiles-dir . --select +fct_orders` to return to **3,000** paid cents.
+3. **Design scenarios (for a managed warehouse pilot).** Compare an ordinary job against dbt State on an isolated target and predict the outcome for three cases:
+   - *New batch, unchanged SQL:* ordinary job always runs `fct_orders`; dbt State rebuilds only when it observes fresh upstream inputs and the model exceeds `lag_tolerance`.
+   - *Changed SQL, no new batch:* both rebuild because compiled model logic changed.
+   - *Late ingestion misses SLA:* hold downstream publication and alert the source owner.
 
-- **New batch, unchanged SQL.** The ordinary build runs the selected fact. Expect a dbt State rebuild when it detects the new input and the model is due under its lag policy.
-- **Changed transformation, same batch.** Expect a rebuild for a change that affects the compiled logic, even without a new batch.
-- **Ingestion misses its deadline.** Hold publication and alert on the expected batch. Check the batch represented in the fact or dashboard before declaring it current.
-
-Compare the run's **Explain** tab (or `dbt state explain` on a supported v2 run), elapsed time, warehouse compute and final paid totals for the same input. Keep a normal scoped build with dbt State off as the fallback when the tracking signal is unreliable. A build still applies model filters such as an incremental lookback. Use the [incident drill](0040-capstone-incident-drill-and-portfolio-review.md) for a correction outside that window. [Node selection](https://docs.getdbt.com/reference/node-selection/methods) · [Source freshness](https://docs.getdbt.com/docs/build/sources)
+Inspect the run's **Explain** tab (or `dbt state explain` on supported v2 runs), compare compute saved against SQL execution time, and keep a normal scoped build fallback when metadata signals are unreliable. Remember dbt State decides *whether* to build; model filters like incremental lookbacks still control *which rows* are read (see [lesson 0040](0040-capstone-incident-drill-and-portfolio-review.md)). [Node selection](https://docs.getdbt.com/reference/node-selection/methods) · [Source freshness](https://docs.getdbt.com/docs/build/sources)
 
 ## Recall
 
-1. Why does an empty manifest selection after ingestion tell you little about data readiness?
-2. What can go wrong if a two-input model requires `all` parents to be fresh and one feed is late?
+1. Why does an empty `state:modified+` listing after an ingestion load tell you nothing about whether data is ready to rebuild?
+2. A downstream reporting model sets `require_fresh_data_from: all` across `orders` and `refunds`, and the `refunds` loader fails silently. What happens without an independent ingestion deadline?
+3. How does `lag_tolerance: 2h` balance warehouse compute costs against dashboard freshness, and what are the three actions dbt State can take for a node?
 
 ??? note "Answer guidance"
-
-    1. The manifests compare project changes. The loaded rows can change while those artifacts describe the same code.
-    2. The model can keep serving its previous output. Check the expected batch independently, alert on the missing input, and verify the consumer after both inputs arrive.
+    1. Manifest diffing inspects project files and configs, not warehouse table contents. Code stays identical when ingestion inserts new rows.
+    2. The model keeps skipping rebuilds while waiting for `refunds`, leaving dashboards quietly stale unless an independent source freshness threshold or ingestion deadline raises an alert.
+    3. `lag_tolerance` skips redundant rebuilds during frequent triggers until the tolerated staleness expires, trading slight latency for lower warehouse spend. For each node, dbt State chooses to reuse, zero-copy clone (where supported), or rebuild.
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |

@@ -1,15 +1,21 @@
 # dbt-project-evaluator and architecture rules
 
-`dbt-project-evaluator` checks the project graph for conventions such as staging boundaries, naming, documentation and test coverage. For example, a mart that reads a source directly bypasses the place where the team normalizes names and types. The check can detect that edge even when all order data tests pass. [Modeling rules](https://dbt-labs.github.io/dbt-project-evaluator/latest/rules/modeling/)
+Data tests verify rows, yet a project can pass every `unique` and `not_null` test while slowly turning into spaghetti SQL: marts reading raw sources directly, staging models joining other staging models, or public tables missing primary-key tests. **`dbt-project-evaluator`** audits your DAG metadata against five best-practice categories:
 
-| Engine | Evaluator workflow |
-| --- | --- |
-| dbt v2 | Use a 2.x release compatible with your `dbt --version`. `dbt check` queries local project metadata without warehouse credentials. The checks also run before `dbt build`. |
-| dbt Core v1 | Pin a compatible 1.x release and confirm its adapter list. For DuckDB, configure dispatch for the `dbt` namespace with search order `[dbt_project_evaluator, dbt]`. Run `dbt deps`, then `dbt build --select package:dbt_project_evaluator` in a sandbox. Inspect the rule's warehouse relation or the associated test output. |
+1. **Modeling** catches marts referencing `source()` directly, staging referencing staging, rejoining upstream concepts, unused sources, and root models.
+2. **Testing** flags models (especially public/mart models) lacking primary-key tests.
+3. **Documentation** catches undocumented models and columns.
+4. **Structure and naming** enforces consistent prefixes (`stg_`, `int_`, `fct_`, `dim_`) and directory layout.
+5. **Performance** flags excessively long view chains and exposures reading staging instead of marts. [Modeling rules](https://dbt-labs.github.io/dbt-project-evaluator/latest/rules/modeling/)
 
-Check the [Package Hub release](https://hub.getdbt.com/dbt-labs/dbt_project_evaluator/latest/) and follow the correct [v1 setup](https://dbt-labs.github.io/dbt-project-evaluator/1.4/) or [v2 setup](https://github.com/dbt-labs/dbt-project-evaluator). A v1 CI job may also select the `dbt_project_evaluator_exceptions` seed. In 2.x, exceptions can live in the `dbt_project_evaluator_exceptions` variable. [Migration guide](https://dbt-labs.github.io/dbt-project-evaluator/latest/migrating-to-v2/)
+## v2 native `dbt check` vs Core v1 package builds
 
-Start with the v2 advisory warnings and review the findings with model owners. For a legitimate exception, record the rule, resource, reason and owner. Promote a rule to an error after addressing existing violations or accepting them explicitly.
+| Engine | How the evaluator runs | How exceptions are recorded |
+| --- | --- | --- |
+| **dbt v2** | Pin a 2.x release compatible with `dbt --version`. `dbt check` evaluates local project metadata with zero warehouse queries (and checks run automatically on `dbt build`). | Configured via the `dbt_project_evaluator_exceptions` variable (or `checks:` severity overrides), naming rule, resource, reason, and owner. |
+| **dbt Core v1** | Pin a 1.x release (configure DuckDB `dispatch` search order `[dbt_project_evaluator, dbt]`), run `dbt deps`, then `dbt build --select package:dbt_project_evaluator` in a sandbox and inspect evaluator test tables. | Configured via a `dbt_project_evaluator_exceptions` seed CSV included in the CI run. |
+
+Check the [Package Hub release](https://hub.getdbt.com/dbt-labs/dbt_project_evaluator/latest/) and follow the [v1 setup](https://dbt-labs.github.io/dbt-project-evaluator/1.4/), [v2 setup](https://github.com/dbt-labs/dbt-project-evaluator), or [v2 migration guide](https://dbt-labs.github.io/dbt-project-evaluator/latest/migrating-to-v2/). Roll out rules as warnings first, fix or record scoped exceptions with model owners, and promote rules to `error` once existing debt is clean.
 
 ```mermaid
 flowchart TD
@@ -23,7 +29,13 @@ flowchart TD
 
 ## Practice with dbt v2 native checks
 
-In [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md), add this entry to `packages.yml`.
+### What you need
+
+Work in [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md) with [`stg_orders`](0004-adapters-profiles-and-the-local-shop-lab.md) and [`models/sources.yml`](0007-sources-and-freshness.md) (create the minimal `sources.yml` below if absent).
+
+### Steps
+
+1. Merge `dbt-labs/dbt_project_evaluator` into `packages.yml`:
 
 ```yaml
 packages:
@@ -31,7 +43,7 @@ packages:
     version: 2.0.2
 ```
 
-Use the [lab's source mapping](0007-sources-and-freshness.md) if you already have it. Otherwise add this minimal declaration in `models/sources.yml`. The seed stands in for the external table.
+2. Ensure `models/sources.yml` declares `shop.incoming_orders`:
 
 ```yaml
 sources:
@@ -42,19 +54,23 @@ sources:
         identifier: raw_orders
 ```
 
-Save as `models/marts/fct_orders_arch_probe.sql`.
+3. Deliberately create an architectural shortcut in `models/marts/fct_orders_arch_probe.sql` that bypasses staging to read the raw source:
 
 ```sql
 select order_id, total_cents
 from {{ source('shop', 'incoming_orders') }}
 ```
 
+4. Install the package and run the specific modeling rule check:
+
 ```bash
 dbt deps --profiles-dir .
 dbt check --profiles-dir . fct_marts_or_intermediate_dependent_on_source
 ```
 
-Expect a violation naming the probe mart and `shop.incoming_orders`. To try the CI gate, merge this into `dbt_project.yml` and rerun the same check. Expect a nonzero exit status while the direct edge exists.
+**Expected result.** `dbt check` flags a violation linking `fct_orders_arch_probe` directly to `shop.incoming_orders`.
+
+5. Promote that rule to a hard CI failure in `dbt_project.yml` and rerun `dbt check --profiles-dir . fct_marts_or_intermediate_dependent_on_source` to verify a nonzero exit code:
 
 ```yaml
 checks:
@@ -64,16 +80,18 @@ checks:
         +severity: error
 ```
 
-Replace the probe's `source()` with `ref('stg_orders')` and rerun. Expect the probe's violation to disappear and the check to exit zero in a clean lab. Re-run the rule without state filtering when changing the rule's policy or auditing the whole project. [Running in CI](https://dbt-labs.github.io/dbt-project-evaluator/latest/ci-check/)
+6. **Fix and verify.** Edit `models/marts/fct_orders_arch_probe.sql` to read `{{ ref('stg_orders') }}` instead of `source(...)` and rerun the check. Confirm the violation disappears and the command exits `0`. Run architecture checks across the whole project without `state:` filtering whenever auditing rules or changing severity policies. [Running in CI](https://dbt-labs.github.io/dbt-project-evaluator/latest/ci-check/)
 
 ## Recall
 
-1. Why can an architecture violation and a passing `unique` data test coexist?
-2. What must a v1 evaluator CI step change when moving to 2.x?
+1. How can `fct_orders_arch_probe` pass `unique` and `not_null` data tests while still failing `dbt check`?
+2. What must a team change when migrating `dbt-project-evaluator` CI checks from Core v1 (1.x) to dbt v2 (2.x)?
+3. When a single model legitimately needs an architectural exception, why document it in `dbt_project_evaluator_exceptions` rather than setting `+severity: warn` or disabling the rule project-wide?
 
-??? success "Answer guidance"
-    1. The evaluator checks graph metadata. The data test queries rows and can pass even when a mart reads raw input directly.
-    2. Replace the evaluator warehouse build with native checks, move exceptions out of the seed into the supported configuration and set check severity explicitly.
+??? note "Answer guidance"
+    1. Data tests validate row values in the built table, whereas `dbt-project-evaluator` inspects DAG edges and metadata (`manifest.json`), catching direct mart-to-source edges regardless of valid rows.
+    2. Replace `dbt build --select package:dbt_project_evaluator` with native `dbt check` commands, move exceptions from the v1 CSV seed into the v2 `dbt_project_evaluator_exceptions` configuration, and declare rule severities under `checks:`.
+    3. A scoped exception suppresses only that documented resource with an owner rationale while keeping the rule strictly enforced across every other model in the project.
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |

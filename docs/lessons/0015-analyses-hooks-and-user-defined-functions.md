@@ -1,10 +1,6 @@
 # Analyses, hooks and user-defined functions
 
-An **analysis** is a versioned query under `analyses/`. It can use `ref()` and Jinja, so dbt can resolve its relations and track its dependencies. `dbt compile` writes the rendered query to `target/compiled/` without creating an analysis relation. Run the SQL explicitly to get results.
-
-A **hook** executes SQL at a defined point. Resource `pre_hook` and `post_hook` run around the resource build. Project `on-run-start` and `on-run-end` hooks run around supported commands. Check the adapter's transaction behavior and make writes safe to repeat. Use `dbt run-operation` for a macro you want to invoke explicitly. An operation macro must execute its SQL, for example with `run_query`. [Analyses](https://docs.getdbt.com/docs/build/analyses) · [Hooks and operations](https://docs.getdbt.com/docs/build/hooks-operations) · [Hook transactions](https://docs.getdbt.com/reference/resource-configs/pre-hook-post-hook)
-
-A **user-defined function (UDF)** is a callable database object. On a supported adapter, put the function body in `functions/` and define its argument and return types in an accompanying YAML file. A model call such as `{{ function('is_reportable_status') }}(status)` resolves the database function name and adds a dependency. Include the function in the build selection so dbt can deploy it before callers. The warehouse evaluates the call when the query runs. dbt's native function resource is available on supported adapters in dbt v2 and Core v1.11+. DuckDB is outside the documented adapter list for this resource. [UDFs and adapter support](https://docs.getdbt.com/docs/build/udfs)
+Not every SQL asset belongs in `models/`. dbt provides separate primitives when you need an ad-hoc query that shouldn't materialize a table (`analyses/`), lifecycle or operational SQL (`hooks`, `run-operation`, `grants`), or reusable database functions (`functions/`).
 
 ```mermaid
 flowchart TD
@@ -17,9 +13,44 @@ flowchart TD
     F --> G["Warehouse evaluates the function in a consumer query"]
 ```
 
+## Analyses
+
+An **analysis** is a `.sql` query under `analyses/`. It can call `{{ ref(...) }}` and Jinja so dbt tracks its upstream dependencies and resolves target relation names, while `dbt compile` renders the SQL into `target/compiled/` without creating any table or view. Run the compiled SQL manually or preview it with `dbt show`. [Analyses](https://docs.getdbt.com/docs/build/analyses)
+
+## Hooks, operations, and grants
+
+- **Model hooks (`pre_hook` and `post_hook`).** Run SQL immediately before or after a model materializes (with `{{ this }}` bound to that model's relation). Use declarative **`grants:`** (`grants: {select: ['bi_reader']}`) instead of writing manual `GRANT` post-hooks wherever your adapter supports grants natively. [Grants configuration](https://docs.getdbt.com/reference/resource-configs/grants)
+- **Run hooks (`on-run-start` and `on-run-end`).** Configured in `dbt_project.yml` to run around commands. `on-run-end` receives `results` and `schemas` context for auditing or cleanup, though parse or connection errors skip it. Verify adapter transaction boundaries and make hook SQL idempotent. [Hooks and operations](https://docs.getdbt.com/docs/build/hooks-operations) · [Hook transactions](https://docs.getdbt.com/reference/resource-configs/pre-hook-post-hook)
+- **Operations (`dbt run-operation`)** invokes any macro on demand outside a model build. Operations must execute SQL explicitly via `run_query()`.
+
+## User-defined functions (UDFs)
+
+On supported adapters in dbt v2 and Core v1.11+ (DuckDB is currently outside the supported list), you can manage warehouse UDFs natively under `functions/`:
+
+- Put the function body in `functions/is_reportable_status.sql` and declare its `arguments` and `returns` data types in `functions/is_reportable_status.yml`:
+
+```yaml
+# Example schema for a supported warehouse (not executed on DuckDB)
+functions:
+  - name: is_reportable_status
+    arguments:
+      - name: status
+        data_type: string
+    returns:
+      data_type: boolean
+```
+
+- Call `{{ function('is_reportable_status') }}(status)` inside downstream models so dbt records the dependency and builds the UDF before callers. [UDFs and adapter support](https://docs.getdbt.com/docs/build/udfs)
+
 ## Practice
 
-Use the original [DuckDB lab seed](0004-adapters-profiles-and-the-local-shop-lab.md) and the [order fact](0006-models-refs-and-project-configuration.md). Create `analyses/monthly_paid_orders.sql`. Group by the month of the order's last update for this exercise. A production revenue report would need the payment event timestamp.
+### What you need
+
+Use the original [DuckDB lab seed](0004-adapters-profiles-and-the-local-shop-lab.md) and [`fct_orders`](0006-models-refs-and-project-configuration.md).
+
+### Steps
+
+1. Create `analyses/monthly_paid_orders.sql` (using `updated_at` as a stand-in for a payment timestamp in this fixture):
 
 ```sql
 select
@@ -32,7 +63,7 @@ group by 1
 order by 1
 ```
 
-Create `macros/count_paid_orders.sql` for an explicit, read-only operation.
+2. Create a read-only operation macro in `macros/count_paid_orders.sql`:
 
 ```sql
 {% macro count_paid_orders() %}
@@ -44,7 +75,7 @@ Create `macros/count_paid_orders.sql` for an explicit, read-only operation.
 {% endmacro %}
 ```
 
-From `shop_lab`, run these commands.
+3. Build `fct_orders`, compile and preview the analysis, and run the macro operation:
 
 ```bash
 dbt build --profiles-dir . --select +fct_orders
@@ -53,21 +84,21 @@ dbt show --profiles-dir . --select monthly_paid_orders
 dbt run-operation --profiles-dir . count_paid_orders
 ```
 
-Find the resolved fact relation in `target/compiled/shop_lab/analyses/monthly_paid_orders.sql`. The preview should show one row for `2026-01-01` with 2 paid orders and 3000 cents. The operation should log `Paid orders: 2`.
+**Expected result.** `target/compiled/shop_lab/analyses/monthly_paid_orders.sql` contains the resolved table name, `dbt show` returns **1 row** (`2026-01-01`, `2` paid orders, `3000` paid cents), and `dbt run-operation` logs `Paid orders: 2`.
 
-To see a hook execute, add `post_hook="analyze {{ this }}"` to the existing `config()` in `models/fct_orders.sql`. Run `dbt --debug run --profiles-dir . --select fct_orders` and look for `analyze` followed by the qualified fact name after the table is built. Restore the original config. [DuckDB ANALYZE](https://duckdb.org/docs/stable/sql/statements/analyze.html)
-
-On paper, sketch a native `is_reportable_status` UDF with a string argument and Boolean return for a supported warehouse. Define `paid` as true and both `pending` and null as false. Write the model's `function()` call and identify which object dbt must build first.
+4. **Inspect a hook.** Temporarily update `models/fct_orders.sql` to `{{ config(materialized='table', post_hook='analyze {{ this }}') }}`. Run `dbt --debug run --profiles-dir . --select fct_orders` and locate `analyze` followed by the qualified table name in the debug log right after table creation. **Restore** `models/fct_orders.sql` back to `{{ config(materialized='table') }}`. [DuckDB ANALYZE](https://duckdb.org/docs/stable/sql/statements/analyze.html)
+5. **Design a UDF on paper.** Write the SQL body and YAML signature for `is_reportable_status` (`string` in, `boolean` out; `'paid' -> true`, `'pending'` and `null -> false`), write the model call `{{ function('is_reportable_status') }}(status)`, and verify which object dbt builds first.
 
 ## Recall
 
-1. Where is the monthly query after compilation, and what command can you use to get its rows?
-2. Which mechanism fits each task: grant read access on every fact build, run a manual diagnostic, and share a status rule with a BI tool that sends SQL to the same warehouse?
+1. Where does dbt write compiled analysis SQL, and how can you inspect its output rows without materializing a table?
+2. Match the right mechanism to each need: granting `SELECT` privileges on every fact build, running a manual diagnostic query, and sharing a status predicate with external BI SQL queries on the same warehouse.
+3. Why should `post_hook` and `on-run-end` SQL be written so it is safe to run twice, and when can `on-run-end` fail to execute at all?
 
-??? success "Answer guidance"
-
-    1. The rendered SQL lives under `target/compiled/`. Use `dbt show --select monthly_paid_orders` or execute the compiled select against the target.
-    2. Use declarative `grants` for supported relation privileges, with a post-hook available for custom SQL after the build. Use `dbt run-operation` for the diagnostic and a warehouse UDF for the BI rule. The function must exist before a consuming query can call it. [Grants configuration](https://docs.getdbt.com/reference/resource-configs/grants)
+??? note "Answer guidance"
+    1. Compiled SQL lives under `target/compiled/` (inside `analyses/`). Run `dbt show --select monthly_paid_orders` or execute the compiled query directly against the target database.
+    2. Use declarative `grants` on the model config for relation privileges (falling back to a `post_hook` only for unsupported privileges), `dbt run-operation` for the manual diagnostic, and a native warehouse UDF via `functions/` for shared BI SQL (built before callers).
+    3. Retries or re-runs re-execute hooks, so non-idempotent inserts duplicate audit logs. `on-run-end` is skipped if dbt exits during parsing, profile connection failure, or an abrupt process kill.
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |

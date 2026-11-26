@@ -1,8 +1,21 @@
 # Model documentation, exposures and ownership
 
-A model description should state the grain, inclusion rules, and units. Put details where the consumer will look for them. For `fct_orders`, describe one row per order, including pending orders, with totals in cents. In the model's existing YAML properties, describe `order_id` as the grain key and `total_cents` as the integer amount. Use `unique` and `not_null` tests to verify the grain key. [Model properties](https://docs.getdbt.com/reference/model-properties)
+Clear documentation turns a model from an opaque SQL table into a trusted contract. Write descriptions where analysts and on-call engineers read them: state the **grain**, **inclusion filters**, and **units** on the model and its key columns, then enforce the grain key with `unique` and `not_null` tests. [Model properties](https://docs.getdbt.com/reference/model-properties)
 
-An exposure declares an external consumer in the DAG. Its `depends_on` list connects the consumer to the resources it reads, using `ref()`, `source()`, or `metric()` as appropriate. Its owner should be able to confirm impact and coordinate recovery. A dashboard URL helps the responder find the consumer. A manual exposure adds lineage and ownership metadata without executing or refreshing the dashboard. [Exposures](https://docs.getdbt.com/docs/build/exposures)
+## Documentation blocks and `persist_docs`
+
+- **YAML descriptions vs doc blocks.** Keep short summaries inline under `description:` in `models/*.yml`. For shared domain definitions or long explanations (such as status meanings reused across models), define a Markdown **doc block** in `models/docs.md` and reference it with `description: '{{ doc("order_grain") }}'`:
+
+```markdown
+{% docs order_grain %}
+One row per `order_id`, including both paid and pending orders.
+Amounts are stored in integer cents (`total_cents`).
+{% enddocs %}
+```
+
+- **Warehouse comments (`persist_docs`).** Configuring `+persist_docs: {relation: true, columns: true}` in `dbt_project.yml` writes dbt descriptions directly into database table and column comments on supported adapters so warehouse query tools display the same docs.
+
+## Declaring exposures and ownership
 
 ```mermaid
 flowchart TD
@@ -13,11 +26,19 @@ flowchart TD
     A --> B --> C --> D
 ```
 
-**v1.** Local `dbt docs generate` generates the legacy docs site from JSON artifacts. **v2.** Local `dbt docs generate` exports a docs site backed by the dbt Information Schema. The manifest can still be inspected for manually declared exposures in both versions. In the dbt platform, use Catalog for lineage. Automatic exposure discovery depends on the connected BI integration. [Documentation commands](https://docs.getdbt.com/reference/commands/cmd-docs) · [Catalog](https://docs.getdbt.com/docs/explore/explore-projects)
+An **exposure** registers an external consumer (a BI dashboard, ML feature table, or reverse-ETL sync) in the dbt DAG using `depends_on` (`ref()`, `source()`, or `metric()`). Give each exposure a `type`, an `owner` (`name` and `email`), `maturity` (`high`, `medium`, `low`), and a `url` so responders know whom to notify before breaking a column or shipping a unit change. Note that a manually declared exposure documents lineage without refreshing the dashboard itself. [Exposures](https://docs.getdbt.com/docs/build/exposures)
+
+**Viewing docs.** In Core v1, `dbt docs generate` and `dbt docs serve` build and preview the static docs site from JSON artifacts. In dbt v2, `dbt docs generate` exports a site backed by the dbt Information Schema. On the managed platform, Catalog serves cross-environment lineage and supports automatic BI exposure discovery for connected tools. [Documentation commands](https://docs.getdbt.com/reference/commands/cmd-docs) · [Catalog](https://docs.getdbt.com/docs/explore/explore-projects)
 
 ## Practice
 
-In [`shop_lab`](0004-adapters-profiles-and-the-local-shop-lab.md), add these properties for [`fct_orders`](0006-models-refs-and-project-configuration.md) in `models/fct_orders.yml`. If the model already has a properties entry, merge the descriptions into it and keep its existing tests.
+### What you need
+
+Work in [`shop_lab`](0004-adapters-profiles-and-the-local-shop-lab.md) with [`fct_orders`](0006-models-refs-and-project-configuration.md).
+
+### Steps
+
+1. Merge these grain, unit, and column descriptions into `models/fct_orders.yml` (preserving any existing tests):
 
 ```yaml
 models:
@@ -31,7 +52,7 @@ models:
         description: Order amount in whole cents.
 ```
 
-Add `models/exposures.yml` with this entry.
+2. Create `models/exposures.yml`:
 
 ```yaml
 exposures:
@@ -45,31 +66,35 @@ exposures:
       email: analytics@example.org
 ```
 
+3. Parse the project, inspect the exposure entry in `manifest.json`, and list its upstream models:
+
 ```bash
 dbt parse --profiles-dir .
 jq -e '.exposures["exposure.shop_lab.orders_dashboard"] | {owner, upstream: .depends_on.nodes}' target/manifest.json
 dbt ls --profiles-dir . --select "+exposure:orders_dashboard" --resource-type model --output name
 ```
 
-Expect the Analytics owner and `model.shop_lab.fct_orders` as the direct dependency. The selector should list the fact and staging models. If parsing fails, check the dependency name and that the YAML is under a model path. If the manifest is correct but the consumer is missing from managed Catalog, check the environment and run that supplied Catalog metadata.
+**Expected result.** `jq` prints the Analytics owner and `model.shop_lab.fct_orders`, and `dbt ls` lists `stg_orders` and `fct_orders`. If parsing fails, verify YAML lives under `models/` (a configured `model-paths` entry) and `ref('fct_orders')` spells the model name cleanly.
 
-Build the fact and check the dashboard's expected numbers against the original fixture.
+4. Build the fact and verify the numbers the dashboard expects from the starter fixture:
 
 ```bash
 dbt build --profiles-dir . --select "+fct_orders"
 dbt show --profiles-dir . --inline "select count(*) as paid_orders, sum(total_cents) as paid_cents from {{ ref('fct_orders') }} where status = 'paid'"
 ```
 
-Expect two paid orders and 3,000 cents. Write one impact note for Analytics about a proposed change that would alter those numbers, such as a join that duplicates orders or a unit change from cents to dollars.
+**Expected result.** `paid_orders` is **2** and `paid_cents` is **3,000**. Write a brief one-paragraph impact notice to `Analytics` describing what would break on `orders_dashboard` if a PR changed `total_cents` to dollars or introduced a fanout join. Keep `models/exposures.yml` for later lessons.
 
 ## Recall
 
-1. Which parts of this setup describe the expected grain, verify it, and identify who owns the dashboard?
-2. Why might a successful dbt build still leave this dashboard stale?
+1. In this setup, which part *describes* the grain, which part *verifies* it, and which part identifies *who to notify* before changing it?
+2. Why can `orders_dashboard` show stale numbers even right after `dbt build --select +fct_orders` completes cleanly?
+3. How do `{% docs ... %}` doc blocks and `persist_docs` solve two different documentation maintenance problems?
 
-??? success "Answer guidance"
-    1. The model description states the grain. Tests on `order_id` verify the key. The exposure names the dashboard owner.
-    2. A manually declared exposure records lineage. Check whether the BI tool refreshed its extract or cache after the build.
+??? note "Answer guidance"
+    1. Model and column `description` fields explain the grain and units; `unique` and `not_null` tests on `order_id` verify the grain; the `orders_dashboard` exposure identifies the Analytics owner.
+    2. Exposures declare dependencies without triggering external BI extract refreshes. Check whether the BI tool's cache or scheduled extract ran after dbt finished.
+    3. `{% docs %}` blocks eliminate copy-pasting long Markdown definitions across YAML files, while `persist_docs` automatically syncs those dbt descriptions into warehouse table and column comments for SQL clients.
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |

@@ -1,8 +1,12 @@
 # Schedule and orchestrate dbt on GCP
 
-A Scheduler HTTP target can send an OAuth-authenticated POST to the Cloud Run Jobs API. This request starts an execution. A successful Scheduler delivery means the API accepted the start request. Check the execution separately to know whether dbt finished successfully.
+Deploying a Cloud Run job manually with `gcloud run jobs execute` tests the image; production pipelines need automated scheduling or ingestion-driven triggers. Google Cloud separates **starting a job** (Cloud Scheduler) from **waiting for completion, checking upstream inputs, and handling errors** (Cloud Workflows + Eventarc).
 
-Use Workflows if a later job must wait for dbt success, or if you need to check an ingestion watermark and conditionally proceed. The Cloud Run v2 connector polls the long-running operation by default. Eventarc can start a workflow after an upstream event. Treat duplicate delivery and overlapping manual runs as possibilities in either design.
+## Choosing between Scheduler and Workflows + Eventarc
+
+- **Cloud Scheduler** sends an OAuth-authenticated HTTP `POST` to the Cloud Run Jobs `:run` API on a cron timer. Remember that HTTP `200` from Scheduler only proves the API accepted the start request, **not** that dbt built your tables! Set `--max-retry-attempts=0` when duplicate job triggers on transient network timeouts could overlap writes.
+- **Cloud Workflows** calls `googleapis.run.v2.projects.locations.jobs.run`, automatically polls the long-running operation until dbt exits, and only continues to downstream steps (such as refreshing BI extracts) when dbt succeeds. Wrap the job call in `try / except` when you want to post custom failure alerts or execute cleanup instead of aborting immediately.
+- **Eventarc** triggers a Workflow automatically on upstream events (such as a Cloud Storage file upload finalizing or a Pub/Sub message from your ingestion pipeline), passing event metadata so Workflows can pass **container overrides** (`args` or `env`, such as `--select +fct_orders` or `--full-refresh`) at runtime without rebuilding the Docker image!
 
 ```mermaid
 flowchart TD
@@ -15,9 +19,9 @@ flowchart TD
 
 ## Practice
 
-### Trigger a job on a schedule
+### Trigger on a schedule with Cloud Scheduler
 
-Enable the Cloud Scheduler API. Create the `dbt-scheduler` service account in the same project as the schedule. The principal creating the schedule must be able to attach that account. Reuse the variables from the [deployment lesson](0042-build-and-deploy-dbt-to-cloud-run.md).
+1. Enable the Cloud Scheduler API, create `dbt-scheduler`, grant it `roles/run.invoker` on the job from [lesson 0042](0042-build-and-deploy-dbt-to-cloud-run.md), and create + trigger a daily UTC schedule:
 
 ```bash
 SCHEDULER_SA="dbt-scheduler@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -37,28 +41,38 @@ gcloud scheduler jobs run dbt-shop-daily --project="$PROJECT_ID" --location="$RE
 gcloud run jobs executions list --job="$JOB" --project="$PROJECT_ID" --region="$REGION"
 ```
 
-Allow time for delivery, then match the new execution to the request timestamp and verify the final status. Pause the schedule before moving to the workflow lab.
+Verify the new execution timestamp matches your trigger and finishes cleanly, then pause the schedule before starting the Workflows step.
 
-### Wait for dbt with Workflows
+### Wait for completion with Workflows
 
-Enable the Workflows and Workflow Executions APIs. Create a `dbt-workflow` service account with Cloud Run Invoker on the job and permission to read the execution and long-running operation. In a dedicated sandbox, project-level Cloud Run Viewer supplies read permissions. Save this example as `workflow.yaml`. Set the connector timeout above the job's expected runtime, including retry time.
+2. Enable the Workflows and Workflow Executions APIs. Create `dbt-workflow` with `roles/run.invoker` on the job plus read access on executions/operations (`roles/run.viewer` in a dedicated sandbox). Save `workflow.yaml` (setting `connector_params.timeout` above your Cloud Run `--task-timeout`):
 
 ```yaml
 main:
   params: [args]
   steps:
     - build_models:
-        call: googleapis.run.v2.projects.locations.jobs.run
-        args:
-          name: ${args.job_name}
-          connector_params:
-            timeout: 1800
-        result: execution
+        try:
+          call: googleapis.run.v2.projects.locations.jobs.run
+          args:
+            name: ${args.job_name}
+            connector_params:
+              timeout: 1800
+          result: execution
+        except:
+          as: err
+          steps:
+            - notify_failure:
+                raise: ${err}
     - mark_ready:
         return:
           status: ready
           execution: ${execution.name}
 ```
+
+(To override arguments at runtime without rebuilding the image, pass `body: {overrides: {containerOverrides: [{args: ["--profiles-dir", "/app", "--select", "fct_orders"]}]}}` inside the connector `args:`.)
+
+3. Pause the cron schedule, deploy, and execute the workflow:
 
 ```bash
 WORKFLOW_SA="dbt-workflow@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -70,18 +84,21 @@ gcloud workflows run dbt-shop-gate --project="$PROJECT_ID" --location="$REGION" 
   --data="{\"job_name\":\"projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB}\"}"
 ```
 
-**Expected result.** On success, the workflow returns `ready` and the Cloud Run execution resource name. Use the [capstone](0045-gcp-serverless-dbt-capstone.md) to verify that the ready step is skipped when dbt fails. For a production ingestion event, use Eventarc to start the workflow and adapt its event envelope to extract the data interval and choose the correct job. Keep the runtime account and trigger account separate.
+**Expected result.** On success, Workflows waits for dbt to exit 0 and outputs `status: ready` alongside the Cloud Run execution resource name. Notice `try / except` lets you insert custom alerting before re-raising the error, ensuring `mark_ready` never runs when dbt fails (tested live in [lesson 0045](0045-gcp-serverless-dbt-capstone.md)).
 
 !!! tip "Coordinate overlapping executions"
-    Setting one task per execution still allows distinct executions to overlap. Start with a single trigger path. If distinct data intervals share a write target, serialize conflicting writes and make reprocessing the same interval safe.
+    Setting `--tasks=1` prevents duplicate containers within *one* execution, yet two separate triggers (such as Scheduler firing while a manual backfill runs) can still launch overlapping executions concurrently. Serialize triggers writing to the same tables and keep reprocessing idempotent.
 
 ## Recall
 
-Why can Scheduler show a successful attempt while the dashboard remains stale?
+1. Why can Cloud Scheduler report a green `Success` delivery attempt while `fct_orders` remains un-updated or broken in BigQuery?
+2. How does Cloud Workflows know when to stop waiting before proceeding to `mark_ready`, and what happens if `build_models` fails inside the `try` block?
+3. How can you run a one-off `--full-refresh` or custom `--select` on a deployed Cloud Run dbt job without building and pushing a brand-new Docker image?
 
 ??? note "Answer guidance"
-
-    Scheduler records delivery to the control-plane endpoint. The job can fail after it starts. Observe Cloud Run execution status and BigQuery results, or use Workflows to start downstream steps once the job succeeds.
+    1. Scheduler only records whether the Cloud Run Jobs HTTP `:run` endpoint accepted the trigger request; dbt can fail later inside the container or in BigQuery. Check the Cloud Run execution status or wrap the job in Workflows.
+    2. The `googleapis.run.v2...jobs.run` connector polls the long-running Cloud Run operation until the execution finishes. If dbt exits nonzero, control enters `except` (handling/alerting and re-raising) and skips `mark_ready`.
+    3. Pass `overrides.containerOverrides` (custom CLI `args` or environment variables) in the Cloud Run Jobs API or Workflows execution payload.
 
 [Schedule Cloud Run jobs](https://docs.cloud.google.com/run/docs/execute/jobs-on-schedule) · [Cloud Run Workflows connector](https://docs.cloud.google.com/workflows/docs/reference/googleapis/run/v2/projects.locations.jobs/run) · [Create workflows](https://docs.cloud.google.com/workflows/docs/creating-updating-workflow) · [Execute a workflow](https://docs.cloud.google.com/workflows/docs/executing-workflow)
 

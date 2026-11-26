@@ -1,8 +1,27 @@
 # Macros, Jinja and dispatch
 
-dbt renders Jinja before sending SQL to the database. Use `{{ ... }}` to emit an expression and `{% ... %}` for statements such as `set`, `if`, and `for`. A macro under `macros/` can render a reusable SQL fragment. Passing `'total_cents'` gives the macro the text of a column expression. The database evaluates that expression for each row.
+dbt evaluates Jinja templates before sending rendered SQL to the warehouse. Repeating expressions like currency conversions, status pivots, or adapter-specific type casts across dozens of models creates drift; macros extract those fragments into reusable functions under `macros/`.
 
-`adapter.dispatch()` gives callers a single macro name. dbt looks for an implementation such as `duckdb__cents_to_dollars` for the active adapter and falls back to `default__cents_to_dollars` when no more specific candidate is found. Package namespaces and project dispatch configuration can affect the search order. Prefer an existing cross-database dbt macro when it covers the same operation. [Dispatch](https://docs.getdbt.com/reference/dbt-jinja-functions/dispatch) · [Cross-database macros](https://docs.getdbt.com/reference/dbt-jinja-functions/cross-database-macros)
+## Jinja delimiters and whitespace control
+
+dbt uses three Jinja tags inside SQL and macro files:
+
+- **`{{ ... }}` (expressions)** evaluates a value or macro call and inserts the resulting text into SQL (for example `{{ cents_to_dollars('total_cents') }}`).
+- **`{% ... %}` (statements)** controls logic with `set`, `if`, and `for` without printing directly. Adding hyphens (`{%- ... -%}`) strips surrounding newlines and spaces so compiled SQL stays readable.
+- **`{# ... #}` (Jinja comments).** Ignored completely during Jinja rendering. Never rely on SQL `--` comments to disable a `{{ ref('...') }}` call, because dbt still parses and builds dependencies inside `--` comments!
+
+`for` loops with `loop.last` let you generate repetitive SQL columns safely:
+
+```sql
+{% set statuses = ['paid', 'pending'] %}
+select
+{% for status in statuses %}
+    sum(case when status = '{{ status }}' then total_cents else 0 end) as {{ status }}_cents{% if not loop.last %},{% endif %}
+{% endfor %}
+from {{ ref('fct_orders') }}
+```
+
+## Cross-database macros and `adapter.dispatch()`
 
 ```mermaid
 flowchart TD
@@ -14,11 +33,19 @@ flowchart TD
     E --> F["Database evaluates the expression per row"]
 ```
 
-During parsing, `execute` is false. Guard access to `run_query` results with `if execute`, and keep dependencies visible to the parser. If a `ref()` only appears in an execution-only branch, declare it in a SQL comment such as `-- depends_on: {{ ref('fct_orders') }}`. Compilation can still run queries while rendering, so keep warehouse writes out of model expression macros. Check adapter behavior with both compiled SQL and actual query results. [Jinja and macros](https://docs.getdbt.com/docs/build/jinja-macros) · [execute](https://docs.getdbt.com/reference/dbt-jinja-functions/execute) · [run_query](https://docs.getdbt.com/reference/dbt-jinja-functions/run_query)
+`adapter.dispatch('cents_to_dollars')` lets a model call one macro name while dbt picks the matching warehouse implementation: `<adapter>__cents_to_dollars` (such as `duckdb__cents_to_dollars`) if defined, falling back to `default__cents_to_dollars`. Package namespaces and `dispatch` `search_order` in `dbt_project.yml` control override priority. Check dbt's built-in cross-database macros (`dbt.datediff`, `dbt.dateadd`, `dbt.safe_cast`) before writing custom dispatch blocks. [Dispatch](https://docs.getdbt.com/reference/dbt-jinja-functions/dispatch) · [Cross-database macros](https://docs.getdbt.com/reference/dbt-jinja-functions/cross-database-macros)
+
+During the parse phase, `execute` is `false`. Always wrap `run_query()` result access inside `{% if execute %}` so parsing does not crash on empty results, and add a `-- depends_on: {{ ref('fct_orders') }}` SQL comment if a `ref()` only executes conditionally inside an `if execute` block. Keep warehouse writes out of model expression macros. [Jinja and macros](https://docs.getdbt.com/docs/build/jinja-macros) · [execute](https://docs.getdbt.com/reference/dbt-jinja-functions/execute) · [run_query](https://docs.getdbt.com/reference/dbt-jinja-functions/run_query)
 
 ## Practice
 
-Use the [DuckDB lab](0004-adapters-profiles-and-the-local-shop-lab.md) and the [order fact](0006-models-refs-and-project-configuration.md). Add `macros/cents_to_dollars.sql`. The DuckDB branch uses decimal multiplication because DuckDB's decimal division produces a floating-point result. The example accepts integer cents that fit the result's precision. Verify the fallback on each adapter before relying on it for currency. [DuckDB numeric types](https://duckdb.org/docs/stable/sql/data_types/numeric.html)
+### What you need
+
+Work in [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md) with [`fct_orders`](0006-models-refs-and-project-configuration.md).
+
+### Steps
+
+1. Save `macros/cents_to_dollars.sql`. DuckDB divides decimals into floats, so the DuckDB branch multiplies by `0.01` to preserve exact decimal math (verify precision on each target adapter before using in production finance models). [DuckDB numeric types](https://duckdb.org/docs/stable/sql/data_types/numeric.html)
 
 ```sql
 {% macro cents_to_dollars(expression) -%}
@@ -34,7 +61,7 @@ Use the [DuckDB lab](0004-adapters-profiles-and-the-local-shop-lab.md) and the [
 {%- endmacro %}
 ```
 
-Add `models/order_amounts.sql`.
+2. Create `models/order_amounts.sql`. Notice `'total_cents'` passes the column name as a Jinja string:
 
 ```sql
 select order_id, {{ cents_to_dollars('total_cents') }} as total_dollars
@@ -42,7 +69,7 @@ from {{ ref('fct_orders') }}
 order by order_id
 ```
 
-From `shop_lab`, build the input, compile, and preview.
+3. Build `fct_orders`, compile `order_amounts`, preview the model, and test edge values inline:
 
 ```bash
 dbt build --profiles-dir . --select +fct_orders
@@ -54,17 +81,18 @@ dbt show --profiles-dir . --inline "
 "
 ```
 
-In `target/compiled/shop_lab/models/order_amounts.sql`, find the multiplication by `0.01`. Expect `12.50`, `5.00`, and `17.50` for orders 1, 2, and 3. The CLI may omit trailing zeros. The inline preview should map `101` to `1.01`, `-101` to `-1.01`, and null to null.
+**Expected result.** Open `target/compiled/shop_lab/models/order_amounts.sql` and verify it rendered `* 0.01` (from `duckdb__cents_to_dollars`) around `total_cents` without quotes. `order_amounts` shows `12.50`, `5.00`, and `17.50` (trailing zeros may be omitted), and the inline check maps `101 -> 1.01`, `-101 -> -1.01`, and `null -> null`.
 
 ## Recall
 
-1. Why does the macro receive `'total_cents'` in quotes while the compiled SQL reads `total_cents` without string quotes?
-2. How would you check that dispatch selected the DuckDB implementation?
+1. Why does the model pass `'total_cents'` in quotes to the macro while the compiled SQL prints `total_cents` unquoted?
+2. How do you confirm that `adapter.dispatch()` selected the DuckDB branch rather than `default__`?
+3. You comment out a slow model dependency using `-- from {{ ref('heavy_model') }}`. Why does `dbt ls --select +my_model` still include `heavy_model`, and how do you stop dbt from registering that edge?
 
-??? success "Answer guidance"
-
-    1. It is a Jinja string containing SQL text. The macro inserts that text as a column reference, which DuckDB evaluates per row.
-    2. Compile the model and inspect the expression. The DuckDB branch multiplies by `0.01`. Run a value check to verify the conversion.
+??? note "Answer guidance"
+    1. `'total_cents'` is a Jinja string literal containing SQL text. The macro interpolates that string directly into the SQL `SELECT` expression evaluated by DuckDB for each row.
+    2. Run `dbt compile` and inspect `target/compiled/` to confirm the compiled SQL multiplies by `0.01` instead of dividing by `100`, then verify values with `dbt show`.
+    3. dbt evaluates Jinja inside SQL `--` comments, so `ref()` still registers a DAG edge. Wrap commented Jinja blocks in `{# ... #}` instead.
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |

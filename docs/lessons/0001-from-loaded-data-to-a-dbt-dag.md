@@ -1,8 +1,12 @@
 # From loaded data to a dbt DAG
 
-In ELT, an ingestion system extracts data and loads it into a data platform. dbt takes over at transformation. It reads your SQL and YAML, works out which resources depend on one another, and sends SQL to the platform to build and test your models. The data platform executes the SQL.
+Analytics pipelines commonly follow ELT (Extract, Load, Transform) instead of ETL. An ingestion tool extracts records from operational systems and loads them raw into a data platform. dbt owns the **T** step: it transforms raw tables into tested, documented analytics models inside that warehouse using SQL and version control.
 
-A directed acyclic graph (DAG) represents those dependencies. In the diagram, each arrow goes from an upstream dependency to a downstream consumer. A cycle would leave dbt with no valid order for building the resources in that cycle.
+dbt reads your SQL and YAML files, works out which resources depend on one another, and sends SQL to the data platform to build and test each resource in order. The data platform executes the queries and stores the results.
+
+## How dbt orders work
+
+A directed acyclic graph (DAG) represents those dependencies. Each arrow flows from an upstream dependency to a downstream consumer. A cycle (for example, `stg_orders` referencing `fct_orders` while `fct_orders` references `stg_orders`) leaves dbt with no valid build order, so dbt halts with a dependency cycle error during parsing.
 
 ```mermaid
 flowchart TD
@@ -12,35 +16,56 @@ flowchart TD
     D -->|"Exposure declares ref()"| E["Revenue dashboard reads the fact"]
 ```
 
-A SQL model is usually a `select` in a project file. Its materialization config tells dbt how to persist the result, for example as a view or table. Write down the **grain** before writing the query. If `fct_orders` promises one row per `order_id`, joining it to order items can multiply rows and overstate revenue unless you aggregate the items first.
+A dbt project organizes those nodes across resource types:
 
-- Use `source('shop', 'raw_orders')` for a table loaded outside dbt after declaring that source in YAML. Use `ref('stg_orders')` for a resource managed by dbt. Both resolve relation names and record graph edges.
-- A literal relation such as `analytics.stg_orders` can still return rows, but dbt won't infer its dependency on `stg_orders` from that SQL. A declared exposure can similarly record a dashboard's upstream dependencies for impact analysis.
+| Resource | Role in the DAG |
+| --- | --- |
+| Source | An external table loaded by ingestion and declared in YAML. |
+| Seed | A small CSV file in Git loaded as a lookup or fixture table. |
+| Model | A SQL `select` statement (or Python function on supported platforms) built as a view, table, or incremental table. |
+| Snapshot | A history table that records row changes over time. |
+| Test | A data or unit assertion attached to resources to catch errors before downstream builds run. |
+| Exposure | Metadata recording a downstream consumer such as a dashboard or ML pipeline. |
+
+## Grain and graph edges
+
+Write down a model's **grain** (what a single row represents) before writing its SQL. If `fct_orders` promises one row per `order_id`, joining it directly to an `order_items` table with three items per order produces three rows per order and triples the order total. Aggregate child tables to the target grain first.
+
+- Use `source('shop', 'raw_orders')` for a table loaded outside dbt after declaring that source in YAML. Use `ref('stg_orders')` for a resource managed by dbt. Both resolve target-specific relation names and record graph edges.
+- A literal table name such as `analytics.stg_orders` can still return rows if that table exists, but dbt omits the edge from its graph. Graph selection and impact analysis miss that dependency.
 
 !!! note "The course fixture"
-    In [the DuckDB lab](0004-adapters-profiles-and-the-local-shop-lab.md), `raw_orders` is a CSV seed managed by dbt. The staging model therefore uses `ref('raw_orders')` and can build the seed as an upstream dependency.
+    In [the DuckDB lab](0004-adapters-profiles-and-the-local-shop-lab.md), `raw_orders` is a CSV seed managed by dbt so you need no external loader. Staging therefore calls `ref('raw_orders')` and can load the seed as an upstream dependency.
 
 ## Practice
 
-Sketch the lab graph from the `raw_orders` seed through `stg_orders`, a proposed `fct_orders`, and a revenue dashboard. Label the grain of the fact and explain what breaks if staging drops `status` while the dashboard reports paid revenue. The sketch should show the seed as upstream of staging and identify the dashboard as a downstream consumer of the change.
+### What you need
 
-With the starter lab, check the staging edge empirically. From `shop_lab`, predict the difference, then run:
+Complete the four-file setup in [lesson 0004](0004-adapters-profiles-and-the-local-shop-lab.md) first if you do not have `shop_lab` ready yet, or read the concept steps below and run the command check right after lesson 0004.
+
+### Steps
+
+1. Sketch the lab graph from the `raw_orders` seed through `stg_orders`, a proposed `fct_orders`, and a revenue dashboard.
+2. Label the grain of `fct_orders` and write down what breaks if `stg_orders` drops the `status` column while the dashboard filters for paid revenue.
+3. From `shop_lab`, predict the difference between these two commands, then run them:
 
 ```bash
 dbt ls --profiles-dir . --select stg_orders
 dbt ls --profiles-dir . --select +stg_orders
 ```
 
-In the starter, the first selection lists `stg_orders`. The leading `+` includes its ancestors, so the second lists both `raw_orders` and `stg_orders`. Listing only inspects the graph.
+**Expected result.** Your sketch places `raw_orders` upstream of `stg_orders` and traces `status` downstream to the dashboard. The first `dbt ls` command lists `stg_orders` alone. The leading `+` includes ancestors, so the second lists both `raw_orders` and `stg_orders` without writing to DuckDB.
 
 ## Recall
 
-1. Why might the SQL still run after you replace a `ref()` with a literal relation name? What would graph selection lose?
-2. An ingestion team starts loading `raw_orders` instead. What should change in staging's dependency declaration?
+1. Why might a model query still succeed after you replace `ref('stg_orders')` with a literal table name, and what does dbt lose?
+2. An ingestion team takes over loading `raw_orders` outside dbt. What should change in staging's dependency declaration?
+3. `fct_orders` joins `stg_orders` to `stg_order_items` (averaging three items per order) without aggregating items first. Which metric breaks, and how do you fix it?
 
 ??? note "Answer guidance"
-    1. The named relation might already exist, so the database can query it. With the edge gone, a selection such as `+stg_orders` can no longer follow that dependency.
-    2. Declare the externally loaded table in source YAML and use `source()` in staging. The ingestion team owns loading the table and dbt records it as an upstream source.
+    1. The physical table may already exist in the database, so the SQL runs. With the `ref()` edge gone, dbt cannot infer build order, target switching, or impact analysis via `+stg_orders`.
+    2. Declare the externally loaded table in source YAML and change staging to call `source()`. The ingestion team owns loading the table, and dbt tracks it as an upstream source.
+    3. Order counts and `sum(total_cents)` inflate roughly threefold because each order repeats per item. Aggregate `stg_order_items` to one row per `order_id` in an intermediate model before joining to `fct_orders`.
 
 [dbt quickstarts](https://docs.getdbt.com/docs/get-started-dbt) · [ref](https://docs.getdbt.com/reference/dbt-jinja-functions/ref) · [source](https://docs.getdbt.com/reference/dbt-jinja-functions/source) · [Graph operators](https://docs.getdbt.com/reference/node-selection/graph-operators)
 

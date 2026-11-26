@@ -1,6 +1,6 @@
 # Capstone incident drill and portfolio review
 
-The orders dashboard still shows **3,000 paid cents** after a historical correction. Trace `orders_dashboard` through `paid_revenue_cents` to its serving fact, then find the first relation that disagrees with the input. Record the last known-good run and the first stale result. Use the [release plan](0039-capstone-build-and-release-plan.md) for the dashboard owner, escalation path and baseline checks.
+An executive opens `orders_dashboard` and sees **3,000 paid cents**, even though Finance corrected order 1 from 1,250 to 1,500 cents yesterday. Every job in the scheduler looks green. Your job is to trace `orders_dashboard` through `paid_revenue_cents`, `fct_orders`, and `fct_orders_incremental` down to `stg_orders`, pinpoint where reality diverged, recover safely, add an automated regression check, and deliver a postmortem. Use the [release plan](0039-capstone-build-and-release-plan.md) for owners and escalation contacts.
 
 ```mermaid
 flowchart TD
@@ -12,21 +12,23 @@ flowchart TD
     F --> G["Notify owners and add the drift check"]
 ```
 
-## Reproduce the missed correction
+## Reproduce the missed backdated correction
 
-Use a disposable [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md) copy with the original fixture, the [two-day incremental model](0010-incremental-models-late-data-and-backfills.md) and [`fct_orders`](0006-models-refs-and-project-configuration.md). In this drill, change the input ref in `models/fct_orders.sql` from `stg_orders` to `fct_orders_incremental`. The dashboard's existing metric can now read stale rows through the fact. Run the baseline build from the lab directory.
+Use a disposable copy of [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md) containing the original 3 rows, [`fct_orders_incremental`](0010-incremental-models-late-data-and-backfills.md) (2-day lookback), and [`fct_orders`](0006-models-refs-and-project-configuration.md). Point `models/fct_orders.sql` at `{{ ref('fct_orders_incremental') }}` so the serving fact consumes the incremental table.
+
+1. Build the baseline cleanly:
 
 ```bash
 dbt build --profiles-dir . --full-refresh --select +fct_orders
 ```
 
-Replace only order 1's row in `seeds/raw_orders.csv` with the following. Keep its paid status and customer ID.
+2. Simulate a backdated source correction by replacing order 1's row in `seeds/raw_orders.csv` with a `2025-12-31` timestamp:
 
 ```csv
 1,101,paid,1500,2025-12-31 10:00:00
 ```
 
-Run an ordinary build to reseed and execute the incremental filter. Save its successful run results as incident evidence.
+3. Run a normal incremental build, save its artifacts as incident evidence, and compare `stg_orders` against `fct_orders`:
 
 ```bash
 dbt build --profiles-dir . --select +fct_orders
@@ -43,11 +45,11 @@ select 'serving fact', count(*), sum(total_cents),
 from {{ ref('fct_orders') }}"
 ```
 
-Expect three rows in each relation. Staging shows **3,750 total / 3,250 paid cents**, while the serving fact shows **3,500 total / 3,000 paid cents**. Check order 1 in `raw_orders`, `stg_orders` and `fct_orders_incremental` to locate the first stale value. The incremental target's maximum timestamp is `2026-01-03 10:00:00`, so its two-day lookback starts at `2026-01-01 10:00:00`. The corrected row falls outside that range. The backdated update also breaks the assumption of a monotonically advancing `updated_at` used by the timestamp snapshot strategy, so inspect raw and staging during diagnosis. [Snapshots](https://docs.getdbt.com/docs/build/snapshots)
+**Expected result.** Both relations have 3 rows, yet `stg_orders` reports **3,750 total / 3,250 paid cents** while `fct_orders` remains stuck at **3,500 total / 3,000 paid cents**! Because `fct_orders_incremental` holds `max(updated_at) = 2026-01-03 10:00:00`, its 2-day lookback (`2026-01-01 10:00:00`) skips order 1's backdated `2025-12-31` correction. Note also that backdated edits violate the monotonically increasing `updated_at` assumption of a `timestamp`-strategy snapshot (switch to `strategy: check` or CDC if mutable historical timestamps occur). [Snapshots](https://docs.getdbt.com/docs/build/snapshots)
 
-## Recover and prevent a repeat
+## Recover and prevent recurrence
 
-Save this singular test as `tests/incremental_orders_match_staging.sql`. It checks for missing or extra keys and changed revenue inputs. It assumes keys are non-null and unique, which should be tested independently on each side.
+1. Add a singular reconciliation check in `tests/incremental_orders_match_staging.sql` (assumes `order_id` uniqueness and `not_null` are tested separately on both relations):
 
 ```sql
 select coalesce(s.order_id, i.order_id) as order_id
@@ -60,7 +62,8 @@ where s.order_id is null
    or s.updated_at is distinct from i.updated_at
 ```
 
-Run `dbt test --profiles-dir . --select incremental_orders_match_staging` and confirm one failing row for order 1 using the test query. For the tiny DuckDB lab, scope the full refresh to the incremental relation. Then rebuild the serving fact and rerun the reconciliation.
+2. Run `dbt test --profiles-dir . --select incremental_orders_match_staging` and confirm it catches order 1.
+3. Execute a scoped full refresh on the incremental model, rebuild the serving fact, verify the reconciliation passes, and test idempotency by replaying a normal `+fct_orders` build:
 
 ```bash
 dbt run --profiles-dir . --full-refresh --select fct_orders_incremental
@@ -70,23 +73,33 @@ dbt build --profiles-dir . --select +fct_orders
 dbt test --profiles-dir . --select incremental_orders_match_staging
 ```
 
-**Acceptance.** Verify order 1 reads **1,500 cents** in both facts, with three rows and three distinct order IDs each. Repeat the aggregate query after recovery and after the ordinary replay. Both fact totals should remain **3,750 total / 3,250 paid cents**, and the reconciliation should return zero rows both times. With a connected dashboard, refresh it and confirm the served value. In the lab, use the serving-fact query as the consumer check.
+**Acceptance.** Order 1 shows **1,500 cents** in both facts, counts remain 3 rows / 3 unique IDs, both totals stabilize at **3,750 total / 3,250 paid cents**, and the reconciliation test returns 0 rows after both recovery and replay. Refresh connected dashboards to confirm consumer recovery.
 
-In production, pause conflicting writes and choose between a key- or partition-scoped backfill and a full rebuild after checking adapter behavior, affected keys, runtime and downstream dependencies. Use a trusted ingestion timestamp or change feed to identify corrections. For a large fact, run the reconciliation on the affected keys or partitions using that signal. A freshness alert based on the latest timestamp can miss this historical change. [Incremental models](https://docs.getdbt.com/docs/build/incremental-models) · [Debugging playbook](../debugging/incremental-recovery.md)
+In production, pause colliding writes before running a key- or partition-scoped backfill (or controlled full rebuild after checking adapter costs and grants). Trigger incremental backfills from an immutable ingestion timestamp (`_loaded_at`) or change log rather than mutable `updated_at`, because `max(updated_at)` freshness checks also miss backdated edits! [Incremental models](https://docs.getdbt.com/docs/build/incremental-models) · [Debugging playbook](../debugging/incremental-recovery.md)
 
-## Portfolio review
+## Portfolio postmortem review
 
-Attach the release plan, incident run and commit IDs, selected commands, and before/after totals. Write a brief incident update naming the dashboard, time window during which it served a value 250 cents low, recovery action, replay evidence and prevention owner. Ask the dashboard owner to confirm the restored result. Restore the original fixture and serving fact from your release baseline when reusing the lab.
+Compile your capstone portfolio package with the [release plan](0039-capstone-build-and-release-plan.md), incident `manifest.json` and `run_results.json`, Git SHA, recovery commands, and a concise postmortem covering:
+
+1. **Timeline.** When the correction landed, when the silent run succeeded, and when recovery completed.
+2. **Root cause.** Lookback cutoff on mutable `updated_at` excluded `2025-12-31`.
+3. **Blast radius.** `orders_dashboard` understated paid revenue by 250 cents (`3,000` vs `3,250`) during the incident window.
+4. **Detection gap.** Scheduler green status and `max(updated_at)` freshness missed backdated edits.
+5. **Mitigation and verification.** Scoped `--full-refresh`, serving rebuild, zero-difference replay proof, and `orders_dashboard` sign-off.
+6. **Prevention and owner.** `incremental_orders_match_staging` test and switching incremental watermarks to `_loaded_at` or CDC, assigned to the transformation owner.
+
+Restore the original 3-row CSV and baseline build if reusing `shop_lab`.
 
 ## Recall
 
-1. Why were the build and the latest-timestamp check able to look healthy while revenue was wrong?
-2. What evidence makes a bounded backfill safe to replay?
+1. Why did both the scheduled `dbt build` and a `max(updated_at)` freshness check stay green while `orders_dashboard` showed revenue 250 cents low?
+2. What evidence proves a bounded backfill repaired the target safely without introducing duplicate keys?
+3. Why does a backdated `updated_at` edit (`2025-12-31`) also pose a problem for `order_history` if that snapshot uses `strategy: timestamp`?
 
 ??? note "Answer guidance"
-
-    1. The build processed rows inside the lookback. Order 1 fell outside it and the maximum timestamp stayed on order 3. A comparison by key exposed the mismatch.
-    2. Identify the exact keys or partitions and use a reviewed key-based or partition replacement. Reconcile keys and totals, then rerun on the same input and confirm the same results without duplicates.
+    1. The incremental query filtered only the latest 2 days around `2026-01-03`, skipping order 1 cleanly without error, while `max(updated_at)` stayed at `2026-01-03` so freshness looked current.
+    2. Key-level diffing against staging returns 0 mismatched rows, `unique` + `not_null` tests pass, revenue totals reconcile, and running the ordinary build a second time produces identical counts and sums.
+    3. The `timestamp` strategy only captures versions when `updated_at` is strictly newer than the snapshot's stored `dbt_updated_at`. A backdated timestamp looks older than the existing open version and is ignored unless you use `strategy: check` or CDC.
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |

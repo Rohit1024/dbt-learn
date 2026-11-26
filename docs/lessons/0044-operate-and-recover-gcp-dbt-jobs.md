@@ -1,6 +1,6 @@
 # Operate, retry, and recover serverless dbt builds
 
-Trace a failure by plane. Check Scheduler delivery or the workflow execution first, then the Cloud Run execution, then dbt task logs and the BigQuery job. A job can fail before its container starts, for example because of image access. A data test can fail after upstream BigQuery writes already succeeded. Use dbt node outcomes and warehouse evidence to choose the smallest safe recovery.
+When a scheduled GCP dbt pipeline alerts, debug layer by layer from trigger through Cloud Run execution and dbt task logs and artifacts down to BigQuery jobs. A container launch error (such as bad Artifact Registry IAM) happens before dbt ever parses YAML, whereas a failing data test commits upstream BigQuery tables first. Pin down the first failing layer before retrying anything.
 
 ```mermaid
 flowchart TD
@@ -11,17 +11,37 @@ flowchart TD
     P --> V["Verify affected keys and consumer totals"]
 ```
 
-| Symptom | Check |
+## Triage table by failure layer
+
+| Symptom | Where to check first |
 | --- | --- |
-| Scheduler gets a 403 | Confirm OAuth, target job resource, and invoker binding on the scheduler identity. |
-| Job cannot launch its container | Check the execution's conditions, image digest, and Artifact Registry access. |
-| BigQuery rejects a query | Inspect the runtime identity, dataset permissions, billing project and data location. |
-| Task times out or hits memory limits | Separate warehouse queuing and query time from local dbt compilation. Check the BigQuery job state before replaying. |
-| Job succeeds with stale output | Verify ingestion freshness, node selection and incremental watermarks. Compare the serving table against an independent query. |
+| **Scheduler returns `403`** | Verify OAuth token, exact job resource path, and `roles/run.invoker` on `dbt-scheduler`. |
+| **Container fails to start** | Run `executions describe` and inspect conditions, image `@DIGEST`, and `dbt-runtime` / Cloud Run Artifact Registry access. |
+| **BigQuery rejects query** | Check `dbt-runtime` IAM roles, billing project, and `DBT_BQ_LOCATION` matching the dataset location. |
+| **Timeout or container OOM** | Check BigQuery `INFORMATION_SCHEMA.JOBS` (using dbt `query-comment` with `invocation_id` and `CLOUD_RUN_EXECUTION`) to separate BigQuery slot queuing/scans from container parse RAM. Set `maximum_bytes_billed` in `profiles.yml` to block runaway scans. |
+| **Job passes yet dashboard stays stale** | Check source freshness, selector scope, and incremental lookback watermarks against raw source rows. |
+
+## Preserving ephemeral artifacts and choosing retry behavior
+
+Because Cloud Run's disk disappears on exit, ship `target/manifest.json`, `target/run_results.json`, and `logs/dbt.log` to a Cloud Storage bucket keyed by Cloud Run's built-in environment variables (`CLOUD_RUN_EXECUTION`, `CLOUD_RUN_TASK_INDEX`, `CLOUD_RUN_TASK_ATTEMPT`) before exiting. Preserve dbt's exit status so Workflows still catches failures:
+
+```bash
+#!/usr/bin/env bash
+set +e
+dbt build --profiles-dir /app --select +fct_orders
+EXIT_CODE=$?
+gsutil -m cp target/manifest.json target/run_results.json \
+  "gs://${ARTIFACT_BUCKET}/runs/${CLOUD_RUN_EXECUTION}/${CLOUD_RUN_TASK_ATTEMPT}/" || true
+exit "$EXIT_CODE"
+```
+
+Distinguish **Cloud Run `--max-retries`** from **`dbt retry`**: Cloud Run task retries restart the entire container command from scratch (risking duplicate writes on append models or hooks if not idempotent), whereas `dbt retry` resumes only unbuilt/failed nodes using a preserved `run_results.json` (useful interactively or with restored artifacts). Keep `--max-retries=0` unless every selected write and hook is strictly idempotent.
 
 ## Practice
 
-From the sandbox, copy the short execution name from the Cloud Run Jobs console or the workflow output. Inspect the status and read the logs for that exact execution.
+### Steps
+
+1. Grab the short execution name from your workflow output or `gcloud run jobs executions list`, then inspect its conditions and container logs:
 
 ```bash
 EXECUTION="replace-with-execution-name"
@@ -32,19 +52,23 @@ gcloud logging read \
   --project="$PROJECT_ID" --freshness=1h --limit=50 --order=asc
 ```
 
-Design a run record containing the Cloud Run execution name, task attempt, image digest, dbt invocation ID, data interval, and BigQuery job IDs where available. Use Cloud Logging for container output. For durable state and investigation, publish selected artifacts such as `manifest.json` and `run_results.json` to a protected Cloud Storage path per execution and attempt before exit. Persist a baseline separately from the working `target/` directory and preserve dbt's exit status when uploading. The instance filesystem is ephemeral.
+2. Design a production runbook entry covering:
+   - Run correlation keys: Cloud Run `execution_name`, `CLOUD_RUN_TASK_ATTEMPT`, immutable image `@DIGEST`, dbt `invocation_id`, data interval, and BigQuery `job_id` (linked via `query-comment` in `dbt_project.yml`).
+   - Ephemeral artifact retention: uploading to GCS per `${CLOUD_RUN_EXECUTION}/${CLOUD_RUN_TASK_ATTEMPT}` so retries never overwrite attempt 0 failure evidence, and updating the shared Slim CI baseline only after a validated `0` exit.
+   - BigQuery recovery: adapt [lesson 0040](0040-capstone-incident-drill-and-portfolio-review.md)'s late-correction drill to BigQuery partitioned tables (bounded partition overwrite or `merge`, serialized against cron runs, verified by key reconciliation and totals).
 
-Use the [late-correction scenario](0040-capstone-incident-drill-and-portfolio-review.md) as a recovery exercise. Plan the BigQuery version of a bounded partition or key-based replay, including overlap prevention and consumer reconciliation. Compare Cloud Run task retries, which restart the command, with dbt retry, which needs run state and compatible code and configuration. Add task retries only after verifying that reruns are safe. Keep separate controls for timeouts, Cloud Run task resources, dbt threads, and BigQuery query costs.
-
-**Expected result.** Your runbook can identify the first failing layer, name the prior successful image and data interval, and verify a recovery by comparing both affected keys and the paid total. For a live sandbox, start with an intentional low-impact test failure and retain the artifacts from both the failed execution and the recovery.
+**Expected result.** Your runbook traces failures across all four layers, locates prior known-good digests and data intervals, and verifies repairs via key diffs and revenue totals.
 
 ## Recall
 
-Why should a retry avoid reusing the same artifact path as the initial attempt?
+1. Why must each Cloud Run task attempt upload `manifest.json` and `run_results.json` to a unique path (`${CLOUD_RUN_EXECUTION}/${CLOUD_RUN_TASK_ATTEMPT}`) rather than overwriting a shared `latest/` path?
+2. How can an operator link a slow or timed-out Cloud Run dbt execution to the exact BigQuery SQL query consuming slots?
+3. Why did the wrapper script capture `EXIT_CODE=$?` before running `gsutil cp` and end with `exit "$EXIT_CODE"`?
 
 ??? note "Answer guidance"
-
-    The second attempt can overwrite the evidence needed to diagnose the first. Key artifacts by execution, task, and attempt. Advance the shared baseline only after a successful, validated run.
+    1. Overwriting a shared path destroys the failed attempt's `run_results.json` and `manifest.json` needed for root-cause analysis, and can corrupt a Slim CI baseline with unbuilt code. Keying by execution and attempt isolates every run's evidence.
+    2. Configure `query-comment` in `dbt_project.yml` to embed dbt `invocation_id`, model `node_id`, and `CLOUD_RUN_EXECUTION` into SQL comments, then inspect BigQuery `INFORMATION_SCHEMA.JOBS` to separate BigQuery execution/slot wait from container runtime.
+    3. If `gsutil cp` ran without saving `$?`, its exit code `0` would mask dbt's failure and trick Cloud Run and Workflows into marking a broken build green.
 
 [Cloud Run retry guidance](https://docs.cloud.google.com/run/docs/jobs-retries) · [Job execution details](https://docs.cloud.google.com/run/docs/managing/job-executions) · [Cloud Run log labels](https://docs.cloud.google.com/logging/docs/api/platform-logs#run) · [dbt artifacts](https://docs.getdbt.com/reference/artifacts/dbt-artifacts)
 

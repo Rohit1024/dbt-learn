@@ -1,17 +1,22 @@
 # Artifacts and run evidence
 
-dbt writes JSON artifacts to `target/` by default. Identify the command and invocation that produced each file before drawing conclusions from it. [dbt artifacts](https://docs.getdbt.com/reference/artifacts/dbt-artifacts)
+When a scheduled build fails or runs slowly, terminal scrollback is rarely enough. dbt writes structured JSON **artifacts** to `target/` and detailed logs to `logs/dbt.log` on every invocation. Pairing those files lets you audit what dbt parsed, what it executed, how long each node took, and which warehouse relation held the data. [dbt artifacts](https://docs.getdbt.com/reference/artifacts/dbt-artifacts)
 
-| File | Question it answers | Where to look |
+## What each artifact captures
+
+| File in `target/` | Question it answers | Key fields to inspect |
 | --- | --- | --- |
-| `manifest.json` | What did dbt know about the project? | `nodes`, `sources`, `exposures`, and the `parent_map` and `child_map` keyed by `unique_id`. Commands that parse the project can write it. |
-| `run_results.json` | What did this invocation report for the resources it processed? | `results[]` entries include `unique_id`, `status`, `timing`, `message`, and adapter-specific details. `dbt build` writes this file. |
-| `catalog.json` | Which warehouse relations and column types did dbt inspect? | Look up a model in `nodes` or a source in `sources`. Metadata coverage depends on command scope and permissions. |
-| `sources.json` | When was a checked source last loaded and how did it compare with its thresholds? | Compare `max_loaded_at`, `snapshotted_at`, and `status` in `results[]`. Run a freshness command for this evidence. |
+| **`manifest.json`** | What did dbt know about the project graph and config? | `nodes`, `sources`, `exposures`, `parent_map`, and `child_map` keyed by `unique_id`. Rewritten by nearly every dbt command (`parse`, `ls`, `compile`, `build`, `run`). |
+| **`run_results.json`** | What did this specific invocation build or test? | `results[]` entries with `unique_id`, `status`, `execution_time`, `failures` (violating row count on failed tests), `message`, and `timing`. |
+| **`catalog.json`** | What tables, views, and column types exist in the warehouse? | `nodes` and `sources` column schemas and table stats (coverage depends on scope and permissions). |
+| **`sources.json`** | When was each checked source last loaded? | `results[]` entries comparing `max_loaded_at`, `snapshotted_at`, and `status`. Written by freshness checks. |
+| **`freshness.json`** | (dbt v2) Freshness status across checked models and sources. | Emitted by `dbt freshness` (which also emits `sources.json` for checked sources). |
+| **`semantic_manifest.json`** | What semantic models, entities, and metrics exist? | Consumed by MetricFlow and Semantic Layer validation tools. |
 
-**v1.** `dbt docs generate` writes the catalog and can replace the build's run results. Use `dbt source freshness` for `sources.json`. [v1 docs commands](https://docs.getdbt.com/reference/commands/cmd-docs?version=1)
+- **v1 metadata collection.** `dbt docs generate` queries warehouse metadata for `catalog.json` (and can overwrite `run_results.json`), while `dbt source freshness` produces `sources.json`. [v1 docs commands](https://docs.getdbt.com/reference/commands/cmd-docs?version=1)
+- **v2 metadata collection.** Pass `--write-catalog` to `dbt build` to emit `catalog.json` alongside build results, and run `dbt freshness` for `freshness.json` and `sources.json`. [v2 docs commands](https://docs.getdbt.com/reference/commands/cmd-docs?version=2) · [Freshness](https://docs.getdbt.com/reference/commands/freshness)
 
-**v2.** Add `--write-catalog` to a local build to collect warehouse metadata. Local dbt Docs v2 exports a site backed by the dbt Information Schema. `dbt freshness` writes `freshness.json` for checked sources and models, and emits `sources.json` for checked sources for compatibility. [v2 docs commands](https://docs.getdbt.com/reference/commands/cmd-docs?version=2) · [Freshness](https://docs.getdbt.com/reference/commands/freshness)
+## Archiving and joining artifacts safely
 
 ```mermaid
 flowchart TD
@@ -21,17 +26,29 @@ flowchart TD
     D --> E["Read status, timing, and model path for this run"]
 ```
 
-Archive the artifacts and logs after each relevant step, including failures. Record the Git SHA, job step, target, and engine version alongside them. Check `metadata.dbt_schema_version` per file before feeding it to a parser. The artifact schema version has its own numbering. Limit access to the archive because metadata and compiled SQL can contain sensitive identifiers or literal values. [Manifest JSON](https://docs.getdbt.com/reference/artifacts/manifest-json) · [Run results JSON](https://docs.getdbt.com/reference/artifacts/run-results-json)
+Follow three safeguards before parsing or storing artifacts:
+
+1. **Copy artifacts immediately after the build step.** Commands like `dbt docs generate`, `dbt compile`, or `dbt run-operation` overwrite files in `target/`, mixing evidence from different invocations. Archive `manifest.json`, `run_results.json`, and `logs/dbt.log` together alongside the Git SHA, target, and engine version, even on failures.
+2. **Match `invocation_id` and `dbt_schema_version`.** Confirm `metadata.invocation_id` matches between `manifest.json` and `run_results.json` before joining on `unique_id`, and check `metadata.dbt_schema_version` because artifact schemas evolve independently from CLI versions.
+3. **Restrict archive permissions.** `manifest.json` contains raw and compiled SQL, which can expose business logic or hardcoded literals. [Manifest JSON](https://docs.getdbt.com/reference/artifacts/manifest-json) · [Run results JSON](https://docs.getdbt.com/reference/artifacts/run-results-json)
 
 ## Practice
 
-From [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md) with [`fct_orders`](0006-models-refs-and-project-configuration.md) in place, build the fact and its inputs. The inspection uses `jq`.
+### What you need
+
+Work in [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md) with [`fct_orders`](0006-models-refs-and-project-configuration.md) and `jq` installed.
+
+### Steps
+
+1. Build the fact graph and immediately archive the matching manifest and run results:
 
 ```bash
 dbt build --profiles-dir . --select "+fct_orders"
 mkdir -p evidence/orders-build
 cp target/manifest.json target/run_results.json evidence/orders-build/
 ```
+
+2. Join the two files on `unique_id` and verify both `invocation_id` values match:
 
 ```bash
 jq -s '
@@ -48,24 +65,26 @@ jq -s '
 ' evidence/orders-build/manifest.json evidence/orders-build/run_results.json
 ```
 
-Expect matching invocation IDs and a successful fact result pointing to `models/fct_orders.sql`. If the IDs differ, retrieve the two files for the same build step before interpreting the join. If `fact` is empty, check the selected nodes and the build log. A parse or connection failure can occur before any new node results are written.
+**Expected result.** `same_invocation` is `true`, and `fact` reports `model.shop_lab.fct_orders` with `status: "success"` and `file: "models/fct_orders.sql"`. If `fact` is empty, inspect the selection and build log (a parse or connection failure stops execution before writing new node results).
 
-Now run `dbt docs generate --profiles-dir .` on v1 or `dbt build --profiles-dir . --select "+fct_orders" --write-catalog` on v2. Check that the catalog reports the fact's physical `order_id` column.
+3. Generate catalog metadata (`dbt build --profiles-dir . --select "+fct_orders" --write-catalog` on v2, or `dbt docs generate --profiles-dir .` on v1) and read the physical column type:
 
 ```bash
 jq -r '.nodes["model.shop_lab.fct_orders"].columns.order_id.type' target/catalog.json
 ```
 
-Expect a concrete warehouse type. If the fact is missing, check that the catalog is from the intended target, the relation exists there, and the command succeeded in reading its metadata.
+**Expected result.** `jq` prints a concrete DuckDB integer type for `order_id` (such as `BIGINT`). If missing, confirm the catalog ran against the right target where `fct_orders` already exists.
 
 ## Recall
 
-1. Why might a model in the manifest have no entry in the build's results?
-2. Where would you look for the fact column's warehouse type and the cause of a failed test?
+1. Why might a model exist in `manifest.json` yet have no entry in `run_results.json`?
+2. Which artifact tells you the physical column type in the warehouse, and which field tells you how many rows violated a failed data test?
+3. You run `dbt build` and then `dbt run-operation count_paid_orders` before copying `target/`. Why can joining `target/manifest.json` and `target/run_results.json` mislead an incident report?
 
-??? success "Answer guidance"
-    1. The manifest describes the project. The build reports on its selected work. Check the selection and whether execution got far enough to write results.
-    2. Inspect the catalog for the type. Match the failed test's `unique_id` in run results to the manifest and use its message and command log to diagnose the failure.
+??? note "Answer guidance"
+    1. `manifest.json` describes the full project graph, whereas `run_results.json` lists only the nodes selected and reached during that single invocation (or nothing if parsing/connecting failed early).
+    2. `catalog.json` stores warehouse column types. `run_results.json` stores `results[].failures` alongside `status` and `message` for test executions (paired with `manifest.json` for file path and SQL).
+    3. `dbt run-operation` overwrites `target/run_results.json` (and updates `manifest.json`) with the operation's result, replacing the build evidence you wanted to inspect.
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |

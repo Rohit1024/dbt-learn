@@ -1,8 +1,10 @@
 # Unit tests and edge cases
 
-A unit test runs a SQL model against small, fixed inputs and compares its output with expected rows. Use it to pin down transformations such as case normalization, date boundaries, and conditional logic. Use data tests to catch duplicates, nulls, and other violations in actual relations.
+Data tests validate live warehouse rows after a model runs, whereas **unit tests** verify your SQL transformation logic before building tables in production. A unit test feeds small synthetic fixture inputs into a model's `ref()` and `source()` dependencies and compares the output rows against expected results. Use unit tests to pin down edge cases such as case normalization, date boundaries, null handling, and conditional aggregations.
 
-Define unit tests in YAML under a model path. Under `given`, supply a fixture for each `ref()` or `source()` the model reads. With inline dictionary rows, dbt can use the input relation's schema to type fixture columns. Under `expect`, include the output columns that demonstrate the rule. dbt compares the projected rows with that expectation.
+## Fixture formats and incremental overrides
+
+Native unit tests are supported in Core v1.8+ and dbt v2 (with documented limits excluding recursive SQL and materialized views). [Unit tests](https://docs.getdbt.com/docs/build/unit-tests)
 
 ```mermaid
 flowchart TD
@@ -12,11 +14,42 @@ flowchart TD
     D --> E["Report a pass or show the row differences"]
 ```
 
-Native unit tests are available in Core v1.8+ and dbt v2. Check adapter and model restrictions before adding one. For example, dbt's documented support excludes recursive SQL and materialized views. To unit test incremental branches, override `is_incremental` in separate tests. Supply a `this` fixture if the incremental branch reads the existing table. Expected rows represent the query output offered to the incremental write. Verify the final persisted merge with a build and a data check. [Unit tests](https://docs.getdbt.com/docs/build/unit-tests) · [Unit test overrides](https://docs.getdbt.com/reference/resource-properties/unit-test-overrides)
+Configure `given` and `expect` in YAML under `unit_tests:`:
+
+- **Fixture formats.** `dict` (inline YAML objects, the default) infers column types from existing upstream warehouse relations, so those upstream tables must exist (or specify `format: sql` / `format: csv` when inputs contain complex expressions or aren't materialized yet).
+- **Projected expectations.** Under `expect.rows`, include only the columns relevant to the rule you are verifying.
+- **Overriding `is_incremental()`, `vars`, and `env_vars`.** Test incremental branches by setting `overrides` in YAML and providing a `this` fixture for existing target rows. [Unit test overrides](https://docs.getdbt.com/reference/resource-properties/unit-test-overrides)
+
+```yaml
+unit_tests:
+  - name: fct_orders_incremental_lookback
+    model: fct_orders_incremental
+    overrides:
+      macros:
+        is_incremental: true
+    given:
+      - input: ref('stg_orders')
+        rows:
+          - {order_id: 2, customer_id: 101, status: paid, total_cents: 500, updated_at: '2026-01-02 10:00:00'}
+      - input: this
+        rows:
+          - {order_id: 3, customer_id: 102, status: paid, total_cents: 1750, updated_at: '2026-01-03 10:00:00'}
+    expect:
+      rows:
+        - {order_id: 2, status: paid}
+```
+
+Unit tests run under `dbt test` and `dbt build`. Select them explicitly with `--select test_type:unit` (or `--exclude test_type:unit` to run data tests alone).
 
 ## Practice
 
-Use `raw_orders` and `stg_orders` from the [DuckDB lab](0004-adapters-profiles-and-the-local-shop-lab.md). Save `models/stg_orders_unit_tests.yml`. The test gives `stg_orders` three synthetic rows, including a null status absent in the lab seed.
+### What you need
+
+Use `raw_orders` and `stg_orders` in [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md). The unit test introduces synthetic uppercase and `null` statuses absent from the starter CSV.
+
+### Steps
+
+1. Save `models/stg_orders_unit_tests.yml`:
 
 ```yaml
 unit_tests:
@@ -35,25 +68,26 @@ unit_tests:
         - {order_id: 11, status: null}
 ```
 
-1. From `shop_lab`, load the seed relation for type information and select the test by name.
+2. Load `raw_orders` so dbt can read its column types for the `dict` fixture, then run the unit test:
 
-    ```bash
-    dbt seed --profiles-dir . --select raw_orders
-    dbt test --profiles-dir . --select order_status_normalizes_case
-    ```
+```bash
+dbt seed --profiles-dir . --select raw_orders
+dbt test --profiles-dir . --select order_status_normalizes_case
+```
 
-2. Temporarily replace `lower(status) as status` with `status` in `models/stg_orders.sql`. Repeat the test command and confirm the comparison reports `PAID` where it expected `paid` for order 9.
-3. Restore `lower(status) as status` and confirm the test passes again. The actual seed rows can stay as they are throughout the exercise.
+3. Temporarily change `lower(status) as status` to `status` in `models/stg_orders.sql` and rerun `dbt test --profiles-dir . --select order_status_normalizes_case`. Notice the failure diff shows `PAID` where `paid` was expected for order 9, even though `seeds/raw_orders.csv` stayed untouched.
+4. **Restore.** Revert `models/stg_orders.sql` back to `lower(status) as status` and verify `dbt test --profiles-dir . --select stg_orders,test_type:unit` passes. Keep `models/stg_orders_unit_tests.yml` for lesson 0039.
 
 ## Recall
 
-1. Which test would catch an unexpected duplicate order ID in tomorrow's production load?
-2. What should an incremental unit test expect when the model selects two changed orders from a fact with a million existing rows?
+1. Which test catches an unexpected duplicate `order_id` in tomorrow's production load, a unit test or a data test?
+2. What should an incremental unit test put in `expect.rows` when the model selects two changed orders out of a million existing target rows?
+3. Why did the practice command run `dbt seed --select raw_orders` before running the unit test, and which fixture format avoids needing an existing upstream table?
 
-??? success "Answer guidance"
-
-    1. A `unique` data test on the persisted order ID. A fixed unit fixture checks transformations on the rows you supply.
-    2. Expect the two rows the model query hands to the write strategy. Use a build followed by a query or data test to verify the final table.
+??? note "Answer guidance"
+    1. A `unique` data test on the built relation catches live data defects. Unit tests only exercise fixed synthetic inputs against your SQL logic.
+    2. Put only the two rows emitted by the model's `SELECT` query, not the existing million rows in `this`. Verify the final merged table separately using `dbt build` and data checks.
+    3. Inline `dict` rows infer column types from the materialized input table (`raw_orders`). Using `format: sql` supplies explicit SQL expressions and types in `given` without needing a pre-built upstream relation.
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |

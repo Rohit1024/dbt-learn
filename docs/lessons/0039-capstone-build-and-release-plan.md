@@ -1,6 +1,6 @@
 # Capstone build and release plan
 
-Ship a paid revenue definition that another engineer can reproduce and a deployment plan that names who owns each handoff. Keep one row per `order_id` in staging and the fact. `order_total_cents` sums all orders. `paid_revenue_cents` sums cents only for `status = 'paid'`. The snapshot records observed history at one row per order version. Keep that history out of the current fact's aggregation.
+In this capstone, you pull together every core resource from Modules 1 through 7 into one reproducible `shop_lab` project and write an operational release plan. Keep staging and `fct_orders` at one row per `order_id`, keep `order_history` SCD versions strictly separate from current fact aggregations, compute `order_total_cents` across all statuses, and compute `paid_revenue_cents` only where `status = 'paid'`.
 
 ```mermaid
 flowchart TD
@@ -13,13 +13,28 @@ flowchart TD
     G --> H["orders_dashboard"]
 ```
 
-## Build and verify the lab
+## Build and verify the shop lab
 
-Use a fresh or disposable DuckDB copy of [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md) with the original three rows. Record `dbt --version`, the adapter and the target. These commands use the dbt v2 lab and its local profile. Use the semantic YAML and MetricFlow commands supported by your release. The local SQL check verifies the warehouse values behind the metrics. Query the actual Semantic Layer as a separate check when a compatible setup is available. [Semantic Layer YAML reference](https://docs.getdbt.com/reference/semantic-layer-reference) · [MetricFlow commands](https://docs.getdbt.com/docs/build/metricflow-commands)
+Use a fresh or clean DuckDB copy of [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md) with the original three rows (`1,250`, `500`, `1,750` cents). Record `dbt --version`, adapter, and target. (Use SQL verification locally to confirm exact warehouse numbers, and query MetricFlow / Semantic Layer separately where configured.) [Semantic Layer YAML reference](https://docs.getdbt.com/reference/semantic-layer-reference) · [MetricFlow commands](https://docs.getdbt.com/docs/build/metricflow-commands)
 
-1. Assemble [`fct_orders`](0006-models-refs-and-project-configuration.md), [`order_statuses`](0008-seeds-and-lookup-data.md) and [`order_history`](0011-snapshots-and-slowly-changing-dimensions.md). Keep the [fact data tests](0012-generic-and-singular-data-tests.md) and [status normalization unit test](0013-unit-tests-and-edge-cases.md).
-2. Test `order_statuses.status` for uniqueness and nulls. Add a relationship test on the existing `fct_orders.status` column with `to: ref('order_statuses')` and `field: status` under `arguments`. Keep the accepted-values test. Add model descriptions with grains and name the transformation owner.
-3. Define the [order semantic model](0026-metricflow-semantic-models-and-entities.md) and [both revenue metrics](0027-metrics-time-spine-and-downstream-integrations.md) on `fct_orders`. Add `metric('paid_revenue_cents')` to the existing `orders_dashboard` [exposure dependencies](0019-model-documentation-exposures-and-ownership.md), which also include `ref('fct_orders')`. Assign a dashboard owner responsible for consumer validation. Use an immutable order or payment date for production period reporting.
+1. Assemble [`fct_orders`](0006-models-refs-and-project-configuration.md), [`order_statuses`](0008-seeds-and-lookup-data.md), [`order_history`](0011-snapshots-and-slowly-changing-dimensions.md), [`paid_orders_have_positive_total`](0012-generic-and-singular-data-tests.md), and [`order_status_normalizes_case`](0013-unit-tests-and-edge-cases.md).
+2. In `models/fct_orders.yml`, ensure `fct_orders` documents its grain and transformation owner, keeps `unique` + `not_null` on `order_id` and `accepted_values` on `status`, and adds a `relationships` check against `order_statuses` (which tests `status` as `unique` and `not_null`):
+
+```yaml
+      - name: status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [paid, pending]
+          - relationships:
+              arguments:
+                to: ref('order_statuses')
+                field: status
+```
+
+3. Merge the [semantic model](0026-metricflow-semantic-models-and-entities.md) and [revenue metrics](0027-metrics-time-spine-and-downstream-integrations.md) onto `fct_orders`, and add `metric('paid_revenue_cents')` alongside `ref('fct_orders')` in `models/exposures.yml` for `orders_dashboard` with an explicit consumer owner (remember real production period metrics need an immutable payment timestamp rather than `updated_at`).
+4. Build the full capstone slice, archive evidence immediately, trace exposure lineage, and reconcile totals:
 
 ```bash
 dbt --version
@@ -36,30 +51,31 @@ select
 from {{ ref('fct_orders') }}"
 ```
 
-**Acceptance.** The build passes the unit and data tests, the first snapshot has three current versions (`dbt_valid_to is null`), and the lineage reaches the dashboard. The fact has three rows and three distinct order IDs. Expect **3,500 total cents** and **3,000 paid cents**. Retain the build artifacts before later commands can replace them. Match results to manifest nodes by `unique_id` and record the commit, invocation ID and metric output. [dbt artifacts reference](https://docs.getdbt.com/reference/artifacts/dbt-artifacts) · [Exposures](https://docs.getdbt.com/docs/build/exposures)
+**Acceptance.** Unit tests and data tests pass, `order_history` holds 3 open versions (`dbt_valid_to is null`), `+exposure:orders_dashboard` traces from `raw_orders` through `paid_revenue_cents`, and `fct_orders` returns **3 orders**, **3 distinct IDs**, **3,500 total cents**, and **3,000 paid cents**. Match `unique_id` values across `evidence/release/` and record the commit SHA, `invocation_id`, and numbers. [dbt artifacts reference](https://docs.getdbt.com/reference/artifacts/dbt-artifacts) · [Exposures](https://docs.getdbt.com/docs/build/exposures)
 
-## Review the release
+## Review the release and rollback plan
 
-Write a release plan with a sample PR that changes which orders qualify as paid. Include the metric diff, a test for a newly included or excluded status, expected totals, and who signs off on the dashboard change.
+Write a release plan around a sample PR that alters which statuses qualify as `paid`. Include the metric diff, a regression unit/data test for the new status, before/after expected totals, and explicit sign-off from the `orders_dashboard` owner.
 
-| Step | Target and gate |
+| Stage | Target, tooling, and gate |
 | --- | --- |
-| Developer build | Personal schema or DuckDB file. Run the lab checks and review the compiled SQL and metric diff. |
-| PR check | Temporary schema per PR. Require a successful build and tests before merge. If using slim CI, compare against the last successful production manifest, review `state:modified+`, and verify any deferred reads. Bootstrap with a full CI build when no baseline exists. |
-| Merge deployment | Deploy the approved commit with a production service identity and build the affected models. Verify model results and the metric before advancing the baseline and notifying the dashboard owner. |
-| Daily refresh | Run after ingestion and check the required batch or source freshness before the build. Use a data refresh selection such as `dbt build --select +fct_orders` for the lab graph. Serialize writes to the same production relations across the merge and refresh jobs. Check the served batch and revenue before clearing the alert. |
+| **Developer build** | Personal schema or DuckDB copy. Run `sqlfmt`, `dbt-checkpoint`, unit/data tests, and inspect compiled SQL + metric diff. |
+| **PR check (CI)** | Temporary PR schema. Run `sqlfmt --check`, `dbt check` (`dbt-project-evaluator`), `dbt parse` + `dbt-checkpoint`, and Slim CI (`dbt build --select state:modified+ --defer --favor-state`), bootstrapping with a full build if no baseline exists. |
+| **Merge deployment (CD)** | Production service identity on `main`. Build modified nodes and tests, verify row counts and metric totals at the merged SHA, update baseline artifacts, and notify the dashboard owner. |
+| **Daily refresh** | Trigger after ingestion via API or schedule with a hard `dbt source freshness` gate. Run `dbt build --select +fct_orders` (serialized against merge writes), collect observability telemetry, and verify served batch totals before clearing alerts. |
 
-Name the source owner, transformation on-call and dashboard owner. Include when to pause publication, which prior commit to redeploy, and which relations must be rebuilt or reconciled after rollback. For a local submission, provide the executed lab evidence and show which job targets run each platform check. [dbt deployments](https://docs.getdbt.com/docs/deploy/deployments) · [dbt scheduler](https://docs.getdbt.com/docs/deploy/job-scheduler) · [Support playbooks](../debugging/index.md)
+Name the source owner, transformation on-call, and dashboard owner, plus criteria to halt publication, which commit SHA to redeploy on rollback, and which tables require rebuilding after a bad release. [dbt deployments](https://docs.getdbt.com/docs/deploy/deployments) · [dbt scheduler](https://docs.getdbt.com/docs/deploy/job-scheduler) · [Support playbooks](../debugging/index.md)
 
 ## Recall
 
-1. What evidence lets a reviewer verify the grain and the paid revenue definition?
-2. What does the production owner still need to do after reverting a change that wrote bad rows?
+1. What concrete evidence proves to a PR reviewer that both the fact's grain and `paid_revenue_cents` are intact?
+2. After reverting a bad model commit in Git, what operational steps remain before dashboards are healthy again?
+3. Why must `order_history` remain separate from `fct_orders` when computing `paid_revenue_cents`?
 
 ??? note "Answer guidance"
-
-    1. Provide a key test and row counts, a pending-order regression case, both revenue totals, and the run and commit identifiers. The exposure identifies the consumer that needs to verify the result.
-    2. Redeploy the known-good commit, rebuild or correct affected data, reconcile the totals and refresh affected consumers. Git history alone does not repair warehouse state.
+    1. `unique` + `not_null` key test results, matching `orders` and `distinct_orders` counts, a pending-order regression test case, reconciled `order_total_cents` (3,500) and `paid_revenue_cents` (3,000), plus the commit SHA, `invocation_id`, and affected exposure owner sign-off.
+    2. Redeploy the known-good commit in production, rebuild/backfill any affected tables and downstream marts, reconcile totals against source, and trigger downstream dashboard/BI refreshes.
+    3. `order_history` stores multiple SCD Type 2 version rows per `order_id`; summing `total_cents` across snapshot history would multiply historical versions of the same order.
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |

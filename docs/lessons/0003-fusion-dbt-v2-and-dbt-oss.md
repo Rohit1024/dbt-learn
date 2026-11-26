@@ -1,18 +1,20 @@
 # Fusion, dbt v2 and dbt OSS
 
-An **engine** parses, compiles and schedules your dbt project. A **distribution** packages the engine with a particular set of features and licenses. An **adapter** connects the engine to the data platform. The **CLI** is the command-line interface you invoke, usually as `dbt`. The command name alone tells you little about which installation runs it.
+To choose tools and read documentation accurately, separate four distinct terms. An **engine** parses, compiles, and schedules a dbt project. A **distribution** packages that engine with a specific license and feature set. An **adapter** connects the engine to a warehouse dialect. The **CLI** is the terminal executable, usually invoked as `dbt`, so the command name alone never tells you which distribution is running.
 
-| Name in docs or older guides | What it refers to |
-| --- | --- |
-| **dbt Core v1.x** | The original Python engine, packaged as `dbt-core` at 1.x, with separately installed Python adapters. |
-| **dbt**, formerly **dbt Fusion Engine** | The full, free-to-use v2 distribution, packaged as `dbt`. It includes SQL comprehension and language server features. Some platform features require a paid entitlement. |
-| **dbt OSS**, formerly **dbt Core v2** | The Apache 2.0 distribution of the same Rust foundation, packaged as `dbt-oss`. It supports standard project builds. |
+## Engine distributions compared
 
-For a migration, record the exact version and distribution, then check adapter and package compatibility and build a representative slice against a development target. Use separate installations when comparing distributions that both expose a `dbt` command.
+| Name in current or older docs | Distribution and architecture | Key capabilities |
+| --- | --- | --- |
+| **dbt Core v1.x** | Original Python engine (`dbt-core` 1.x) paired with separately installed Python adapters. | Renders Jinja SQL templates without full target-dialect SQL parsing or type checking. |
+| **dbt** (formerly **dbt Fusion Engine**) | Full free-to-use Rust-based v2 distribution (`dbt`). | Fast parsing, target-dialect SQL comprehension, static type analysis, and an integrated language server. Some platform integrations require a paid entitlement. |
+| **dbt OSS** (formerly **dbt Core v2**) | Apache 2.0 distribution of the same Rust foundation (`dbt-oss`). | Standard project parsing and execution without proprietary features such as full static analysis or the platform language server. |
 
-## Where analysis fits
+When planning a v1-to-v2 migration, record your exact version and distribution, verify adapter and package `require-dbt-version` compatibility, check any custom Jinja macros or Python models, and run a representative build against a development schema. Keep separate virtual environments or explicit binary paths when testing multiple distributions on one machine.
 
-Full dbt v2 can analyze rendered SQL in the target dialect. It can check syntax and, with sufficient schema information, resolve columns and types before running the model's query. The platform still resolves runtime permissions and executes queries against real rows.
+## Where SQL analysis fits
+
+Unlike Core v1, full dbt v2 parses rendered SQL in the target dialect before executing queries. With schema metadata, it can resolve column names and types during compilation instead of waiting for a slow warehouse failure.
 
 ```mermaid
 flowchart TD
@@ -24,13 +26,28 @@ flowchart TD
     D -->|"Yes, for a build"| E["Data platform executes SQL and data tests"]
 ```
 
-In releases with `static_analysis` modes, `baseline` is the default and reports analysis findings as warnings. It skips fetching remote schemas for analysis. `strict` can fetch relation schemas and fail on unresolved columns or types. `off` disables this analysis. Coverage depends on the release, SQL dialect and available metadata. Check the docs for the version you're running.
+Control analysis behavior with the `--static-analysis` flag or per-model `static_analysis` config:
+
+- `baseline` (default): checks SQL syntax and local definitions, reports findings as warnings, and skips fetching remote warehouse schemas.
+- `strict`: fetches relation schemas when available and fails compilation on unresolved columns or type mismatches.
+- `off`: skips SQL comprehension for the invocation or for a specific model that uses dynamic SQL not yet understood by the analyzer (for example, `{{ config(static_analysis='off') }}` at the top of a model).
+
+The data platform remains responsible for runtime permissions and row-level execution.
 
 ## Practice
 
-From an isolated copy of [the DuckDB starter](0004-adapters-profiles-and-the-local-shop-lab.md), copy `models/stg_orders.sql` to `models/analysis_probe.sql`. In the copy, change `total_cents` to `total_centz`. Use full dbt v2 and run these commands one at a time:
+### What you need
+
+Work in an isolated copy of the four [DuckDB starter files](0004-adapters-profiles-and-the-local-shop-lab.md) using full dbt v2. If you have not created `shop_lab` yet, read the steps here and run them right after setting up the starter in lesson 0004.
+
+### Steps
+
+1. Copy `models/stg_orders.sql` to `models/analysis_probe.sql`.
+2. In `models/analysis_probe.sql`, misspell `total_cents` as `total_centz`.
+3. Seed `raw_orders` first so DuckDB holds the upstream schema metadata needed by strict analysis, then run each compile and preview command one at a time:
 
 ```bash
+dbt --version
 dbt seed --profiles-dir . --select raw_orders
 dbt compile --profiles-dir . --select analysis_probe --static-analysis off
 dbt compile --profiles-dir . --select analysis_probe --static-analysis baseline
@@ -38,16 +55,21 @@ dbt compile --profiles-dir . --select analysis_probe --static-analysis strict
 dbt show --profiles-dir . --select analysis_probe --static-analysis off
 ```
 
-Record the version, exit status and first diagnostic for each mode. On full dbt 2.0.12 with this fixture, `off` and `baseline` compiled, `strict` failed on the unresolved column, and `show` with analysis off got a DuckDB binder error when it submitted the query. Remove the probe file afterward.
+4. Record the dbt version, exit status, and first diagnostic from each command.
+5. Delete `models/analysis_probe.sql` when finished so it does not affect later exercises.
+
+**Expected result.** On full dbt 2.0.12 with this fixture, `--static-analysis off` and `baseline` compile, `strict` fails at compile time on the unresolved `total_centz` column, and `dbt show` with analysis `off` fails at execution time with a DuckDB binder error.
 
 ## Recall
 
-1. A guide says to install Fusion, but an older team runbook says Core v2. Which distribution does each name refer to today?
-2. Why can a query pass strict analysis and still produce duplicate orders?
+1. A blog post mentions Fusion, while a teammate's runbook mentions Core v2. Which distributions do those names refer to today?
+2. Why can a model pass `--static-analysis strict` and still produce duplicate order rows in production?
+3. When should you configure `static_analysis: off` on a single model instead of disabling analysis for the entire project?
 
 ??? note "Answer guidance"
-    1. Fusion became the full dbt v2 distribution called dbt. Core v2 became dbt OSS. Core v1 refers to the Python engine.
-    2. A column and its type can resolve correctly even when several rows share its value. Check actual rows with a uniqueness test on the published grain.
+    1. Fusion became the full dbt v2 distribution (`dbt`). Core v2 became `dbt OSS` (`dbt-oss`). Core v1 refers to the Python engine (`dbt-core`).
+    2. Static analysis verifies column names, SQL syntax, and data types against schemas, not row uniqueness or join cardinality. Use `unique` and `not_null` data tests to enforce the output grain.
+    3. Set `static_analysis: off` only on individual models whose dynamic Jinja or dialect features confuse the analyzer, leaving strict or baseline checks active across the rest of the DAG.
 
 [dbt and dbt OSS comparison](https://docs.getdbt.com/blog/comparing-dbt-and-dbt-oss) · [Supported data platforms](https://docs.getdbt.com/docs/supported-data-platforms) · [Static analysis](https://docs.getdbt.com/docs/build/about-static-analysis)
 

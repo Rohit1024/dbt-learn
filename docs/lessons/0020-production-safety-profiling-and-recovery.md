@@ -1,13 +1,23 @@
 # Production safety, profiling and recovery
 
-A failed `dbt build` can leave upstream relations committed and downstream relations skipped. A skipped model may still have a relation from an earlier run. Start from the invocation and target, then verify what the warehouse contains before choosing the recovery scope. [dbt build](https://docs.getdbt.com/reference/commands/build)
+A failing `dbt build` can leave upstream relations updated in the warehouse while downstream models are marked skipped. A skipped downstream table does not disappear; it keeps stale rows from an earlier run. Safe incident recovery starts by identifying the exact invocation, target, and committed warehouse state before deciding what to retry or backfill. [dbt build](https://docs.getdbt.com/reference/commands/build)
+
+## Understanding partial commits and safety flags
+
+- **Table replacement vs test-after-write.** dbt builds `table` models atomically on most adapters (building a temporary relation and swapping, or `CREATE OR REPLACE`), so a SQL runtime crash leaves yesterday's table intact. However, a `dbt build` data test runs **after** the model commits its new table, meaning bad rows stay live in that table even when its test fails and skips downstream models. That is why staging and intermediate tests matter before mart writes.
+- **Safety flags for faster, stricter checks:**
+  - `--empty` (v1.8+ / v2): executes the DAG with `LIMIT 0` to verify SQL compilation, schema contracts, and warehouse permissions without scanning production data.
+  - `--fail-fast`: stops launching remaining independent branches immediately upon the first error.
+  - `--warn-error` (or `--warn-error-options`): promotes selected warnings (such as missing config or deprecations) into hard CI failures.
+
+## Diagnosing symptoms and recovering safely
 
 | Symptom | First diagnostic |
 | --- | --- |
-| Failure before any warehouse query | Read the first parse, compilation, profile, or connection error in the command log. Check whether the result artifact is from this invocation. |
-| Model reports an error | Match the result's `unique_id` to the source file and inspect the compiled SQL, target relation, and adapter error. Use warehouse query history to check what ran and committed. |
-| Data test fails and a downstream model is skipped | Identify the failing rows using the test query and trace the model's parents. Decide whether data, transformation logic, or the expectation needs correction. |
-| The job is slow | Compare scheduler wait with build and node timing. For a slow node, match the SQL to warehouse query history and separate queue or lock time from execution. On DuckDB, run `EXPLAIN ANALYZE` on the read-only model select to see actual operator timing and row counts. |
+| Failure before any warehouse query | Check the earliest parse, compile, or `profiles.yml` error in `logs/dbt.log` or terminal output. Verify whether `target/run_results.json` belongs to this run. |
+| Model execution error | Match the `unique_id` in `run_results.json` to the file path, inspect `target/compiled/` SQL, and check warehouse query history for permissions or SQL errors. |
+| Data test fails and downstream skips | Query the failing rows using the test SQL (`dbt show --select <test>`) and trace upstream parents to distinguish bad ingestion data from broken logic. |
+| Slow production build | Separate scheduler queue/prep duration from node SQL duration. Match slow nodes to warehouse query history, or run `EXPLAIN ANALYZE` in DuckDB to inspect operator row counts and scans. |
 
 [Run visibility](https://docs.getdbt.com/docs/deploy/run-visibility) · [DuckDB profiling](https://duckdb.org/docs/stable/guides/meta/explain_analyze.html)
 
@@ -22,13 +32,17 @@ flowchart TD
     F --> G
 ```
 
-**v1 (1.6+).** `dbt retry` uses the previous `run_results.json` and inherits the original selection. **v2.** Retry can also override selection with `--select`, `--exclude`, or `--selector`. In either engine, preserve the failed result before any command can overwrite it. If there's no usable failed invocation, run the intended build with explicit scope after fixing the cause. [dbt retry](https://docs.getdbt.com/reference/commands/retry)
-
-Check rerun safety before restarting a failed production job. An append-only incremental or a hook that inserts audit rows may duplicate work. Reconcile the committed keys and time range, then use a bounded backfill if possible. Before a full refresh, verify retained input history, consumer impact, and whether the target is shared. After any repair, reconcile the affected window against the source, rerun relevant tests, and confirm downstream consumers refreshed.
+**Retrying safely (`dbt retry`).** Core v1.6+ and dbt v2 provide `dbt retry`, which reads `target/run_results.json` from the failed invocation and resumes from the point of failure (dbt v2 also lets you override `--select`, `--exclude`, or `--selector` during retry). Always back up failed artifacts before another command overwrites `target/`. Before retrying an incremental `append` model or non-idempotent hook, verify no partial batch will be duplicated; reconcile keys and totals afterward. [dbt retry](https://docs.getdbt.com/reference/commands/retry)
 
 ## Practice
 
-In a sandbox copy of [`shop_lab`](0004-adapters-profiles-and-the-local-shop-lab.md) with the [standard order fact](0006-models-refs-and-project-configuration.md), create `tests/ops_staging_order_check.sql`. This deliberately flags one valid fixture row so the test fails after the staging view builds.
+### What you need
+
+Work in a sandbox copy of [`shop_lab`](0004-adapters-profiles-and-the-local-shop-lab.md) with [`fct_orders`](0006-models-refs-and-project-configuration.md).
+
+### Steps
+
+1. Create `tests/ops_staging_order_check.sql` that deliberately flags valid row 1 so the build fails immediately after `stg_orders`:
 
 ```sql
 select order_id
@@ -36,7 +50,7 @@ from {{ ref('stg_orders') }}
 where order_id = 1
 ```
 
-Run the build and expect a nonzero exit. Run the evidence commands afterward even though the build failed.
+2. Run the build (expect a nonzero exit code) and archive the failed artifacts before running any other dbt command:
 
 ```bash
 dbt build --profiles-dir . --select "+fct_orders"
@@ -48,7 +62,9 @@ cp target/manifest.json target/run_results.json evidence/orders-failure/
 jq -r '.results[] | [.unique_id, .status, .message] | @tsv' evidence/orders-failure/run_results.json
 ```
 
-Confirm the staging model succeeded, the test flagged one row, and the fact was skipped. Change the predicate to `where order_id is null` so it expresses a real invariant. Retry in the same sandbox before issuing any new build, compile, or preview command.
+**Expected result.** `stg_orders` succeeded, `ops_staging_order_check` failed on 1 row, and `fct_orders` was marked `skipped`.
+
+3. Fix `tests/ops_staging_order_check.sql` to check a true invariant (`where order_id is null`), then resume immediately with `dbt retry` (do not run `compile` or `show` before retrying or you will overwrite `run_results.json`):
 
 ```bash
 dbt retry --profiles-dir .
@@ -56,9 +72,9 @@ jq -r '.results[] | [.unique_id, .status] | @tsv' target/run_results.json
 dbt show --profiles-dir . --inline "select count(*) as orders, count(distinct order_id) as order_ids from main.fct_orders"
 ```
 
-Expect the test to pass, the fact to build, and both counts to equal three. If retry has no usable results, confirm the failed step and target, then repeat the original scoped build. Remove the temporary test after the exercise.
+**Expected result.** The retried test passes, `fct_orders` builds, and both counts equal **3**.
 
-With a DuckDB client connected to `shop.duckdb`, profile the paid-orders query on the recovered fact.
+4. Profile the paid-orders query directly against `shop.duckdb` using the DuckDB CLI (or Python `duckdb` if the CLI is not installed):
 
 ```sql
 explain analyze
@@ -67,16 +83,20 @@ from main.fct_orders
 where status = 'paid';
 ```
 
-Find the status filter and the two rows it passes to the aggregate. Operator row counts show where work happens. Use representative data to investigate production runtimes.
+(In Python without the DuckDB binary: `python3 -c "import duckdb; print(duckdb.connect('shop.duckdb').sql(\"explain analyze select sum(total_cents) from main.fct_orders where status = 'paid'\").fetchall()[0][1])"`.) Inspect the `FILTER` node showing 2 rows flowing into the aggregate.
+
+5. **Cleanup.** Delete `tests/ops_staging_order_check.sql` when finished.
 
 ## Recall
 
-1. Why can a table exist even though the result for its model shows it was skipped?
-2. A node took ten minutes in dbt. What evidence would distinguish warehouse queuing from a slow scan?
+1. Why can a table exist and return stale numbers in the warehouse even though `run_results.json` shows `status: "skipped"` for that model?
+2. A model took ten minutes during last night's job. What evidence distinguishes warehouse queuing from an expensive join or scan?
+3. Why does a failing data test in `dbt build` protect downstream models yet still require attention on the model that just ran?
 
-??? success "Answer guidance"
-    1. An earlier invocation may have created it. Check warehouse history and compare the affected data window with the expected source arrivals.
-    2. Match the node's invocation, SQL, and timestamp to its warehouse query. Compare queue and execution durations, then inspect the plan for rows scanned and expensive operators.
+??? note "Answer guidance"
+    1. An earlier successful invocation already materialized that table; skipping it in the current failed run leaves those older rows untouched in the warehouse.
+    2. Compare the dbt invocation timestamps and node duration against warehouse query history to separate queue/lock wait time from actual SQL execution time, then inspect the query plan (`EXPLAIN ANALYZE`) for scanned rows and joins.
+    3. `dbt build` executes tests **after** materializing the model's relation, so downstream models are skipped, while the model under test already committed the violating rows to its target table.
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |

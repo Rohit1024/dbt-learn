@@ -1,16 +1,20 @@
 # Studio IDE, Git and environment roles
 
-Studio IDE is the browser-based dbt editor formerly called Cloud IDE. It opens a branch of the project's linked Git repository and runs commands through the project's development environment. Saving a file updates your Studio workspace. **Commit and sync** sends the change to your Git branch so reviewers and jobs can fetch it. The configured base branch is where developers branch from and typically open pull requests. [Studio IDE guide](https://docs.getdbt.com/docs/platform/studio-ide/develop-in-studio)
+In a team setting, analysts and engineers cannot overwrite the same production tables while testing half-finished SQL. The dbt platform separates work across **environments** (Development, CI, Staging, Production), each pairing a Git branch, a dbt **release track** (such as `Latest`, `Compatible`, `Extended`, or a pinned Core v1 track), environment variables, and scoped warehouse credentials. [dbt environments](https://docs.getdbt.com/docs/dbt-platform-environments) · [Deployment environments](https://docs.getdbt.com/docs/deploy/deploy-environments)
 
-An environment supplies the code branch, dbt release track, and warehouse settings. A project has one development environment and can have multiple deployment environments, including one designated Production environment. Use warehouse grants to enforce the write boundaries below. [dbt environments](https://docs.getdbt.com/docs/dbt-platform-environments) · [Deployment environments](https://docs.getdbt.com/docs/deploy/deploy-environments)
+## Studio IDE and Git workflow
+
+**Studio IDE** (formerly Cloud IDE) runs inside your browser against your project's single **Development** environment. Saving a file updates only your personal Studio workspace. Running **Commit and sync** pushes commits to your remote feature branch and pulls upstream base-branch changes so you can resolve merge conflicts before opening a pull request. [Studio IDE guide](https://docs.getdbt.com/docs/platform/studio-ide/develop-in-studio)
 
 | Execution context | Code and credentials | Write boundary |
 | --- | --- | --- |
-| Studio | Working branch and personal warehouse credentials | Developer schema such as `dbt_alice` |
-| CI | Pull request revision and a scoped deployment identity | Temporary PR schema in a separate CI environment |
-| Production job | Configured deployment branch and a dedicated service identity | Published schema such as `analytics` |
+| **Studio** | Working branch (including unsaved/uncommitted edits) and personal warehouse credentials. | Personal developer schema such as `dbt_alice`. |
+| **CI** | Pull request commit SHA and a scoped CI deployment identity. | Temporary PR schema in a dedicated CI environment. |
+| **Production job** | Configured release branch (`main`) and a dedicated service identity. | Published schema such as `analytics`. |
 
-**Compile** resolves Jinja and references so you can inspect the resulting SQL. **Preview** executes a query with development credentials. **Build** writes selected relations and runs their selected tests. A small preview shows sample values, while a build can test the whole relation. Check the target and the release track before comparing Studio with a job. [IDE user interface](https://docs.getdbt.com/docs/platform/studio-ide/ide-user-interface) · [dbt show](https://docs.getdbt.com/reference/commands/show)
+Enforce these boundaries with warehouse grants: give personal dev users write access only to their own dev schemas, and restrict production schemas (`analytics`) to the production service identity. Environment variables follow a strict override order: Project default < Environment value < Job override < Personal dev override.
+
+## Compile, preview, and build in Studio
 
 ```mermaid
 flowchart TD
@@ -22,31 +26,42 @@ flowchart TD
     E --> F["Open a PR against the base branch"]
 ```
 
+- **Compile** resolves Jinja and `ref()` targets so you verify schema routing without modifying data.
+- **Preview** executes the query (with a row limit) using your personal dev role. Passing a tiny preview does not prove the whole dataset passes tests.
+- **Build** runs selected models and tests into your personal schema. Verify the target schema and release track before comparing Studio results with a production run. [IDE user interface](https://docs.getdbt.com/docs/platform/studio-ide/ide-user-interface) · [dbt show](https://docs.getdbt.com/reference/commands/show)
+
 ## Practice
 
-Use the [shop lab](0004-adapters-profiles-and-the-local-shop-lab.md) with the [order fact](0006-models-refs-and-project-configuration.md) and its original three orders. On a scratch branch, put each selected column of `fct_orders.sql` on its own line. Keep the same columns, materialization and `ref('stg_orders')`.
+### What you need
 
-- **In Studio.** Confirm your personal credentials and schema, create a branch, save the edit, and run `dbt build --select +fct_orders` in the command bar. Open the fact's compiled SQL and preview. Inspect the diff, then use **Commit and sync** if you're using a training repository.
-- **Without an account.** In a local Git checkout of the lab, create a scratch branch with `git switch -c lab/studio-orders` and make the same edit. Use the local editor to save, then run the commands below. The DuckDB profile simulates a personal target. Compare the branch and target you used with the production settings in the table above.
+Use [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md) with [`fct_orders`](0006-models-refs-and-project-configuration.md) and the original three rows. On a scratch branch, format `models/fct_orders.sql` with each column on its own line while preserving the columns, `table` materialization, and `ref('stg_orders')`.
+
+### Steps
+
+- **With Studio access.** Verify your personal credentials and schema (`dbt_<username>`), create a new branch, save the formatted edit, and run `dbt build --select +fct_orders` in the Studio command bar. Inspect compiled SQL and preview rows, review the Git diff, and run **Commit and sync** if using a training repository.
+- **Without a platform account (local Git simulation).** Create a branch in a Git copy of `shop_lab`, apply the same edit, and run:
 
 ```bash
+git switch -c lab/studio-orders
+# Edit models/fct_orders.sql to put each column on its own line
 dbt build --profiles-dir . --select +fct_orders
 dbt compile --profiles-dir . --select fct_orders
 dbt show --profiles-dir . --select fct_orders
 git diff -- models/fct_orders.sql
 ```
 
-Check the SQL in `target/compiled/shop_lab/models/fct_orders.sql` after compiling locally. You succeed when the compiled SQL reads the development copy of `stg_orders`, the preview contains order IDs 1, 2 and 3, and the diff changes only formatting. Record the branch, target schema, and commit SHA if committed. An uncommitted edit is part of the Studio run's working copy and won't be in that SHA.
+**Expected result.** `target/compiled/shop_lab/models/fct_orders.sql` reads the dev `stg_orders`, `dbt show` returns order IDs 1, 2, and 3, and `git diff` touches formatting only. Record the branch name, target schema, and commit SHA (noting that uncommitted Studio edits run in your workspace without appearing in that SHA).
 
 ## Recall
 
-1. A preview succeeds in Studio and a production job fails. Which settings and run evidence would you compare?
-2. What must happen before CI can see a Studio edit?
+1. A model preview succeeds in Studio IDE, yet the production deploy job fails on the same model. Which differences would you inspect first?
+2. What must happen in Studio before a pull request CI job can test your latest edit?
+3. Why should the Development environment and Production environment use separate warehouse credentials and schemas instead of sharing one `analytics` write role?
 
-??? question "Answer guidance"
-
-    1. Compare the working tree and commit with the job's fetched SHA. Then compare the release track or exact dbt version, fully qualified relation names, and the warehouse identity and grants.
-    2. Commit and sync the edit to the branch and open or update the pull request that triggers the CI job.
+??? note "Answer guidance"
+    1. Compare the Studio working tree against the production job's checked-out Git SHA, then compare the environment release tracks (dbt versions), resolved target relation names, and warehouse identity grants.
+    2. Run **Commit and sync** in Studio to push the commit to your remote Git branch, then open or update the pull request targeting the base branch.
+    3. Separate roles and schemas isolate unreviewed developer experiments so broken SQL or bad test inputs cannot corrupt published tables queried by downstream dashboards.
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |

@@ -1,16 +1,26 @@
 # Metrics, time spine and downstream integrations
 
-MetricFlow turns a request for named metrics, dimensions, and filters into SQL. Defining metrics centrally keeps the aggregation and units consistent across clients. Use `metric_time__day` or `metric_time__month` to choose the output grain of the shared time dimension.
+Once a model exposes its entities and dimensions, **metrics** define governed calculations that every BI tool, API, and spreadsheet shares. MetricFlow translates metric requests (`paid_revenue_cents` by `metric_time__day` or `metric_time__month`) into SQL so teams never average pre-aggregated percentages or invent conflicting filters.
 
-| Metric type | Calculation |
+## Five MetricFlow metric types and time spines
+
+| Metric type | Calculation and use case |
 | --- | --- |
-| Simple | Aggregate an expression, such as summing order amounts. |
-| Ratio | Divide two metrics aggregated at the requested grain, such as paid amount divided by all order amount. |
-| Derived | Evaluate an expression over metrics, such as revenue minus refunds. |
-| Cumulative | Accumulate a metric over time, such as a trailing 7-day sum. |
-| Conversion | Match a base event to a later conversion event by entity within a window, such as signup to first payment. |
+| **`simple`** | Direct aggregation (`sum`, `count`, `count_distinct`, `avg`, `min`, `max`) over a column or `expr`, optionally scoped with a `filter:` (such as filtering on a dimension). |
+| **`ratio`** | Divides a `numerator` metric by a `denominator` metric **after** aggregating each at the requested grain (preventing the "average of daily ratios" bug). |
+| **`derived`** | Evaluates an arithmetic SQL `expr` across multiple metrics (such as `order_total_cents - refund_cents`). |
+| **`cumulative`** | Accumulates a simple metric over a trailing `window` (for example `7 days`) or `grain_to_date` (month-to-date). |
+| **`conversion`** | Measures entities that perform a base event and then a conversion event within a defined time window (such as signup to first paid order). |
 
-A **time spine** is a modeled calendar with one row per base period. It gives MetricFlow dates for time joins and windows. Cover the whole reporting range and decide whether a missing fact should produce a null or a zero. The query must use the spine to return dates absent from the fact. The example shows that explicitly with a left join.
+For example, in the embedded spec, a ratio metric over two simple metrics looks like:
+
+```yaml
+metrics:
+  - name: paid_order_share
+    type: ratio
+    numerator: paid_revenue_cents
+    denominator: order_total_cents
+```
 
 ```mermaid
 flowchart TD
@@ -20,9 +30,17 @@ flowchart TD
     D --> E["Return metric rows to the client"]
 ```
 
+A **time spine** is a calendar table with one continuous row per period (`date_day`) covering your reporting window. MetricFlow needs a time spine to fill missing calendar dates (`join_to_timespine: true` + `fill_nulls_with: 0`) and compute cumulative windows.
+
 ## Practice
 
-Use the [shop_lab setup](0004-adapters-profiles-and-the-local-shop-lab.md) and its [order fact](0006-models-refs-and-project-configuration.md), with the original three orders. Merge the example into the existing `fct_orders` entry in `models/fct_orders.yml`, preserving any other column properties and tests. This embedded syntax targets dbt v2 or v1.12.
+### What you need
+
+Use [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md) with [`fct_orders`](0006-models-refs-and-project-configuration.md) and the original three rows. Merge this block into `models/fct_orders.yml` (preserving existing tests and descriptions; this embedded syntax targets dbt v2 or v1.12).
+
+### Steps
+
+1. Add the semantic config and metrics to `models/fct_orders.yml`:
 
 ```yaml
 models:
@@ -55,7 +73,7 @@ models:
         fill_nulls_with: 0
 ```
 
-Create `models/time_spine_daily.sql` with four dates, including a day with no orders.
+2. Create `models/time_spine_daily.sql` covering four days, including January 4 which has zero orders:
 
 ```sql
 {{ config(materialized='table') }}
@@ -66,7 +84,7 @@ from generate_series(
 ) as days(day_start)
 ```
 
-Register it in `models/time_spine_daily.yml`.
+3. Register the time spine in `models/time_spine_daily.yml`:
 
 ```yaml
 models:
@@ -78,6 +96,8 @@ models:
         granularity: day
         data_tests: [unique, not_null]
 ```
+
+4. Parse, build, and verify the calendar-joined daily totals in SQL:
 
 ```bash
 dbt parse --profiles-dir .
@@ -100,7 +120,7 @@ left join daily on spine.date_day = daily.date_day
 order by spine.date_day"
 ```
 
-Expect the spine tests to pass and the SQL check to return the following amounts. January 2 has a pending order. January 4 has zeroes because the calendar join keeps that date and `coalesce` fills the missing sums.
+**Expected result.** Spine tests pass and the query prints all four dates (January 4 appears with `0` because of the left join and `coalesce`):
 
 | Date | Order total cents | Paid revenue cents |
 | --- | ---: | ---: |
@@ -110,9 +130,9 @@ Expect the spine tests to pass and the SQL check to return the following amounts
 | 2026-01-04 | 0 | 0 |
 | **Sum** | **3,500** | **3,000** |
 
-### Validate and serve the metrics
+### Validate and serve with `saved_queries`
 
-Save a reusable request in `models/orders_daily.yml`.
+5. Create `models/orders_daily.yml` to declare a reusable saved query (managed deployments can also add `exports:` with `export_as: table | view` to materialize saved queries in the warehouse for tools without live Semantic Layer connectors):
 
 ```yaml
 saved_queries:
@@ -123,7 +143,7 @@ saved_queries:
         - "TimeDimension('metric_time', 'day')"
 ```
 
-`dbt parse` refreshes `target/semantic_manifest.json`. A standalone v2 parse may warn about skipping connected validation without `dbt_cloud.yml`. The lab was checked with dbt 2.0.12 and a separate Python 3.12 environment containing `dbt-metricflow[dbt-duckdb]==0.16.0`, `dbt-core==1.11.17`, and `dbt-duckdb==1.11.1`. Run `dbt` from the v2 installation to parse the embedded YAML, and run `mf` from the Python environment to read the resulting manifest.
+6. `dbt parse` updates `target/semantic_manifest.json` (a standalone v2 parse without `dbt_cloud.yml` may warn that connected validation was skipped). The lab was checked with dbt 2.0.12 plus a separate Python 3.12 environment containing `dbt-metricflow[dbt-duckdb]==0.16.0`, `dbt-core==1.11.17`, and `dbt-duckdb==1.11.1`. Run `dbt` from v2 to emit the manifest, and run `mf` from that Python environment:
 
 ```bash
 dbt parse --profiles-dir .
@@ -132,18 +152,18 @@ mf validate-configs
 mf query --saved-query orders_daily --start-time 2026-01-01 --end-time 2026-01-04
 ```
 
-Expect the same four rows as the SQL check. Add `--explain` to see how `join_to_timespine` keeps the calendar dates and `fill_nulls_with` supplies the zeroes. A connected platform project can validate with `dbt sl validate` and submit a query with `dbt sl query --saved-query orders_daily`. Use `--compile` there to inspect the generated SQL. [MetricFlow commands](https://docs.getdbt.com/docs/build/metricflow-commands)
-
-Managed exports can write a saved query as a table or view on a schedule for warehouse consumers. Interactive BI and API queries require Semantic Layer credentials, a supported warehouse connection, and a successful deployment in the configured environment. DuckDB is the local lab adapter. [Saved queries](https://docs.getdbt.com/docs/build/saved-queries) · [Administer the Semantic Layer](https://docs.getdbt.com/docs/use-dbt-semantic-layer/setup-sl)
+**Expected result.** `mf query` matches the 4-row table above. Pass `--explain` to inspect how MetricFlow generates the time-spine join (`join_to_timespine`) and zero fill (`fill_nulls_with`). In a connected dbt platform project, use `dbt sl validate` and `dbt sl query --saved-query orders_daily --compile`. Interactive BI and Semantic Layer API queries require Semantic Layer credentials, a supported warehouse, and a successful deployment. [MetricFlow commands](https://docs.getdbt.com/docs/build/metricflow-commands) · [Saved queries](https://docs.getdbt.com/docs/build/saved-queries) · [Administer the Semantic Layer](https://docs.getdbt.com/docs/use-dbt-semantic-layer/setup-sl)
 
 ## Recall
 
-1. Why can averaging daily paid shares give a different result from calculating the paid share for the whole month?
-2. What evidence would you collect when a BI chart skips January 4?
+1. Why does averaging daily paid-order ratios give a different answer from asking MetricFlow for a `ratio` metric at `metric_time__month`?
+2. A BI chart backed by MetricFlow omits January 4 when zero orders occurred that day. What four things do you inspect?
+3. When should a team configure `exports:` on a `saved_query` instead of relying purely on live Semantic Layer API queries?
 
-??? success "Answer guidance"
-    1. Daily averaging gives each day equal weight. The month-level ratio divides total paid cents by total order cents, weighting by the day's order amount.
-    2. Check that the calendar includes January 4, inspect the generated SQL for the spine join, and verify the metric's fill settings and the client's treatment of nulls.
+??? note "Answer guidance"
+    1. Averaging daily ratios weights each day equally regardless of order volume. A `ratio` metric aggregates total monthly `paid_revenue_cents` and total monthly `order_total_cents` first, then divides once at the requested monthly grain.
+    2. Confirm `time_spine_daily` covers January 4, verify `join_to_timespine: true` and `fill_nulls_with: 0` on the metric, inspect the generated SQL (`--explain` or `--compile`), and check whether the BI client hides zero/null rows.
+    3. Use `exports:` when downstream SQL consumers or legacy BI tools lack a Semantic Layer connector and need a pre-materialized warehouse table or view built on a schedule.
 
 [Time spine quickstart](https://docs.getdbt.com/guides/mf-time-spine) · [Semantic Layer YAML reference](https://docs.getdbt.com/reference/semantic-layer-reference)
 

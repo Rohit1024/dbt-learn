@@ -1,25 +1,51 @@
 # Package Hub, dbt deps and dbt-utils
 
-A dbt package brings project code into your project. Its macros can generate adapter-specific SQL, and its models, seeds, tests and hooks can run as part of your job. Review the release diff and transitive dependencies before running new package code.
+A **dbt package** is a reusable dbt project (containing macros, tests, models, or hooks) installed into your project under `dbt_packages/`. Because installed package code compiles and runs inside your own dbt invocations with your warehouse credentials, always check compatibility, inspect release diffs, and pin versions before running `dbt deps`.
 
-On [Package Hub](https://hub.getdbt.com/), open the exact release and check its `require-dbt-version` against `dbt --version`. For v2, check what the compatibility badge covers. Confirm adapter support in the package docs and run a small build on your target. Version constraints and parse checks leave SQL execution to be verified.
+## Managing packages and dependencies
 
-`packages.yml` declares the dependencies. `dbt deps` installs their resolved versions into `dbt_packages/` by default. Commit `packages.yml` and `package-lock.yml` so CI can run `dbt deps` in a clean checkout with the same resolutions. When intentionally changing a pin or refreshing a range with `dbt deps --upgrade`, review the lock diff for indirect changes and run the affected builds. [dbt deps reference](https://docs.getdbt.com/reference/commands/deps)
+On [Package Hub](https://hub.getdbt.com/), check `require-dbt-version` against `dbt --version`, verify adapter support, and confirm what any dbt v2 badge covers before adopting a package.
 
-`dbt-utils` supplies helpers such as `date_spine`, `generate_surrogate_key` and `unique_combination_of_columns`. The key macro casts the inputs to strings, uses a sentinel for nulls by default, and hashes the joined values. Test the input grain separately. Adding `customer_id` to an order key could hide repeated order IDs with different customers. When replacing the older `surrogate_key` macro, compare persisted IDs before upgrading. The legacy option `surrogate_key_treat_nulls_as_empty_strings` changes how nulls hash. [dbt-utils](https://github.com/dbt-labs/dbt-utils)
+Declare dependencies in root `packages.yml` using Hub pins, Git URLs (for private internal macro repos using `git:` + `revision:` + optional `subdirectory:`), or local monorepo paths (`local:`):
+
+```yaml
+packages:
+  - package: dbt-labs/dbt_utils
+    version: 1.3.3
+  # Private or internal Git example:
+  # - git: "https://github.com/org/internal-dbt-macros.git"
+  #   revision: v1.2.0
+```
+
+Run `dbt deps` to resolve and download dependencies into `dbt_packages/`. Commit `packages.yml` and `package-lock.yml` to Git, and keep `dbt_packages/` in `.gitignore` so CI runs `dbt deps` cleanly with identical locked versions. When upgrading via `dbt deps --upgrade`, inspect the `package-lock.yml` diff for transitive dependency bumps and test affected builds. [dbt deps reference](https://docs.getdbt.com/reference/commands/deps)
+
+## Core `dbt-utils` macros and tests
 
 ```mermaid
 flowchart TD
-    Hub["Package Hub release constraints"] --> Pin["Declare dbt_utils in packages.yml"]
+    Hub["Package Hub release constraints"] --> Pin["Pin dbt_utils in packages.yml"]
     Pin --> Deps["dbt deps resolves and installs"]
     Deps --> Lock["Review and commit package-lock.yml"]
     Deps --> Macro["Compile key macro for DuckDB"]
     Macro --> Build["Build scratch model and check the grain"]
 ```
 
+`dbt-utils` provides battle-tested SQL helpers and generic data tests: [dbt-utils](https://github.com/dbt-labs/dbt-utils)
+
+- **SQL generators.** `generate_surrogate_key`, `date_spine`, `star` (select all columns except excluded ones), `pivot` / `unpivot`, `union_relations`, and `deduplicate`.
+- **Data tests.** `unique_combination_of_columns`, `expression_is_true`, `recency`, `equal_rowcount`, and `at_least_one`.
+
+`generate_surrogate_key` casts each input column to string, replaces `null` with a fixed sentinel by default, concatenates, and hashes. Never pass extra columns (such as `customer_id`) just to force uniqueness if your grain should be `order_id`, or duplicate orders with different customers will quietly pass! When upgrading from older `surrogate_key`, compare persisted hashes first (note the legacy `surrogate_key_treat_nulls_as_empty_strings` flag changes null hashing).
+
 ## Practice with dbt v2 and DuckDB
 
-Use the [shop_lab setup](0004-adapters-profiles-and-the-local-shop-lab.md) and run from its project root. Merge this entry into `packages.yml`. The example pins [dbt-utils 1.3.3](https://hub.getdbt.com/dbt-labs/dbt_utils/1.3.3/).
+### What you need
+
+Work from the root of [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md). This lab pins [dbt-utils 1.3.3](https://hub.getdbt.com/dbt-labs/dbt_utils/1.3.3/).
+
+### Steps
+
+1. Merge this dependency into `packages.yml`:
 
 ```yaml
 packages:
@@ -27,7 +53,7 @@ packages:
     version: 1.3.3
 ```
 
-Save as `models/orders_package_keys.sql`. The two hashes probe null and empty string behavior while the seed stays intact.
+2. Create `models/orders_package_keys.sql` to compare how `generate_surrogate_key` hashes `null` versus empty string `''`:
 
 ```sql
 with orders as (
@@ -48,7 +74,7 @@ select
 from orders
 ```
 
-Save as `models/orders_package_keys.yml`.
+3. Create `models/orders_package_keys.yml`:
 
 ```yaml
 models:
@@ -62,6 +88,8 @@ models:
         data_tests: [unique, not_null]
 ```
 
+4. Install packages, build, and preview:
+
 ```bash
 dbt --version
 dbt deps --profiles-dir .
@@ -69,16 +97,18 @@ dbt build --profiles-dir . --select +orders_package_keys
 dbt show --profiles-dir . --select orders_package_keys
 ```
 
-Expect three rows, three distinct key values, three passing tests and `null_and_empty_differ` true in every row with the default null behavior. Run `dbt deps` a second time and confirm the lock still resolves the same release. For Core v1, check the generic-test syntax in your release. Versions before 1.10.5 use test arguments directly under the test name. [Data test properties](https://docs.getdbt.com/reference/resource-properties/data-tests)
+**Expected result.** Three rows return with three distinct `order_key` hashes, all three tests pass, and `null_and_empty_differ` is `true` in every row. Run `dbt deps --profiles-dir .` again and confirm `package-lock.yml` resolves the exact same version. (On Core v1 releases earlier than 1.10.5, place test arguments directly under the test name instead of `arguments:`). [Data test properties](https://docs.getdbt.com/reference/resource-properties/data-tests)
 
 ## Recall
 
-1. Which files would you review in a package upgrade, and what does a clean build verify?
-2. Can two rows with the same `order_id` pass the combination test?
+1. Which files should you review and commit during a package upgrade, and which directory should stay out of Git?
+2. Can a table containing two rows with the same `order_id` still pass `unique_combination_of_columns: [order_id, customer_id]`?
+3. Why should you inspect a newly added third-party package's `dbt_project.yml` and hooks before running `dbt build` in production?
 
-??? success "Answer guidance"
-    1. Review the requested versions, resolved lock entries and package source changes. A clean build verifies installation and execution against the selected engine, adapter and data.
-    2. Yes, if their `customer_id` differs. The separate `unique` test on `order_id` enforces the lab's order grain.
+??? note "Answer guidance"
+    1. Review and commit `packages.yml` and `package-lock.yml` (plus any code diff in the package release), and keep `dbt_packages/` ignored in `.gitignore`.
+    2. Yes, if those two rows have different `customer_id` values. Always enforce the primary `order_id` grain with its own `unique` test.
+    3. Package models, hooks (`on-run-start`, `on-run-end`), and macros execute inside your project under your warehouse role, so unreviewed packages can run unexpected DDL/DML or incur heavy compute.
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |

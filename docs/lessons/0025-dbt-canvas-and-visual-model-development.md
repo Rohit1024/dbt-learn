@@ -1,12 +1,13 @@
 # dbt Canvas and visual model development
 
-Canvas is a visual editor for dbt models. Input operators choose relations, transform operators define operations such as joins and filters, and an output operator names the model and its path. The graph generates model SQL. In an enabled workspace, preview intermediate operators, inspect their SQL, run the model in your development schema, and commit for review in Git. The committed model participates in dbt lineage and deployment. [Canvas interface](https://docs.getdbt.com/docs/platform/canvas-interface) · [Canvas quickstart](https://docs.getdbt.com/guides/canvas)
+**dbt Canvas** is a drag-and-drop visual model builder inside the dbt platform. Instead of writing boilerplate joins and CTEs from scratch, you wire operators together on a canvas: **Input** nodes choose relations, transform operators (**Select**, **Filter**, **Formula**, **Join**, **Aggregate**, **Union**) reshape rows, and an **Output** node sets the model name and folder path. Under the hood, Canvas generates standard `.sql` and `.yml` files in your Git branch so the model participates in normal PR code reviews, CI checks, and dbt deployment jobs. [Canvas interface](https://docs.getdbt.com/docs/platform/canvas-interface) · [Canvas quickstart](https://docs.getdbt.com/guides/canvas)
 
 !!! note "Legacy availability"
-
     On November 12, 2026, dbt Labs stopped selling Canvas or enabling it for new platform accounts and archived its docs. Existing customers can continue to use it. The archived prerequisites list Enterprise or Enterprise+, developer credentials, a compatible adapter and release track, a supported HTTPS Git integration, and a completed Staging or Production run. Use the SQL walkthrough in Studio or locally if Canvas is unavailable. [Canvas availability and prerequisites](https://docs.getdbt.com/docs/platform/canvas)
 
-Review the graph and generated SQL for join direction, key uniqueness, filter placement, and output grain. A preview can show plausible values while missing duplicate keys elsewhere in the data.
+## Reviewing visual SQL before shipping
+
+Whether a model is authored visually in Canvas or written by hand, treat the generated SQL like any production PR: inspect **join direction** (`INNER` vs `LEFT`), verify **key uniqueness** on the joined lookup table, check **filter placement** (`WHERE` vs conditional aggregation), and confirm the **output grain**. A 100-row preview inside a visual node can look reasonable while hiding duplicate keys elsewhere in the table.
 
 ```mermaid
 flowchart TD
@@ -21,11 +22,14 @@ flowchart TD
 
 ## Practice
 
-Use the original three rows in the [shop lab](0004-adapters-profiles-and-the-local-shop-lab.md), the [order fact](0006-models-refs-and-project-configuration.md), and the [status lookup seed](0008-seeds-and-lookup-data.md) with `paid,true` and `pending,false`. The new model, `int_reportable_orders`, should contain one row per reportable order.
+### What you need
 
-**With Canvas access.** Use a sandbox where both inputs have been built. If the model explorer doesn't show the seed, publish a sandbox model using `select status, is_reportable from {{ ref('order_statuses') }}` and select that model as the lookup input. Use `fct_orders` as the left input and the lookup as the right input. Configure an inner join on `status` and retain the fact's order ID, customer ID, status and amount along with the lookup's `is_reportable` flag. Filter for true, then drop the flag from the output. Name the output `int_reportable_orders`. Preview the join and filter, inspect the SQL, and run the model in development. Add the properties below in Studio and review the resulting files together.
+Use [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md) with the original three rows, [`fct_orders`](0006-models-refs-and-project-configuration.md), and [`order_statuses`](0008-seeds-and-lookup-data.md) (`paid,true` and `pending,false`). We will build `int_reportable_orders` at a grain of one row per reportable order.
 
-**Without Canvas.** Create `models/int_reportable_orders.sql` in Studio or in a local copy of the lab. The refs supply the two inputs and the SQL encodes the same join, filter and projection.
+### Steps
+
+- **With Canvas access.** Start in a sandbox where both inputs exist. If the explorer hides seeds, expose `order_statuses` via a thin staging view (`select status, is_reportable from {{ ref('order_statuses') }}`). Add `fct_orders` (left) and `order_statuses` (right), configure an inner join on `status`, keep `order_id`, `customer_id`, `status`, `total_cents`, and `is_reportable`, filter `is_reportable = true`, drop `is_reportable` from the output, and name the output `int_reportable_orders`. Preview intermediate operators, inspect the generated SQL, run in dev, and add the YAML tests below in Studio.
+- **Without Canvas (Studio or local DuckDB).** Create `models/int_reportable_orders.sql` encoding the exact same join, filter, and projection:
 
 ```sql
 select
@@ -39,7 +43,7 @@ inner join {{ ref('order_statuses') }} as statuses
 where statuses.is_reportable = true
 ```
 
-In either path, add `models/int_reportable_orders.yml` and run a build with tests.
+2. Add `models/int_reportable_orders.yml` to enforce the output grain:
 
 ```yaml
 models:
@@ -50,22 +54,27 @@ models:
         data_tests: [unique, not_null]
 ```
 
+3. Build and inspect the output (omit `--profiles-dir .` inside Studio):
+
 ```bash
 dbt build --profiles-dir . --select +int_reportable_orders
 dbt show --profiles-dir . --inline "select * from {{ ref('int_reportable_orders') }} order by order_id"
 ```
 
-Use the command bar without `--profiles-dir .` in Studio. Expect order IDs 1 and 3 with totals of 1250 and 1750 cents, and both tests passing. In a disposable local copy, add a second `paid,true` row to the status seed and rebuild. The output uniqueness test should flag IDs 1 and 3. If you already test lookup uniqueness, that test can fail first and block the downstream build. Remove the duplicate and rebuild to recover.
+**Expected result.** Both `unique` and `not_null` pass, and `dbt show` prints orders **1** (`1250` cents) and **3** (`1750` cents).
+
+4. **Test the fanout failure mode (in a disposable copy).** Add a second `paid,true` row to `seeds/order_statuses.csv` and rebuild `+int_reportable_orders`. Confirm `unique` fails on `order_id` for orders 1 and 3 (or lookup `unique` halts upstream first if defined). Remove the duplicate row and rebuild to recover.
 
 ## Recall
 
-1. Why can a duplicate lookup row inflate revenue after this join?
-2. What happens to an order with a status absent from the lookup? Which test could detect it?
+1. Why does a duplicate row in `order_statuses` inflate reported revenue after this join?
+2. What happens to an order whose `status` is missing from `order_statuses`, and which test detects unmapped statuses before rows disappear?
+3. When a teammate leaves or Canvas is retired on a project, can another engineer maintain a Canvas-built model without opening the visual editor?
 
-??? question "Answer guidance"
-
-    1. Each matching lookup row produces a result row for the order, so summing the amounts counts the order twice. A unique test on lookup status catches the input defect. A unique test on output order ID detects the changed grain.
-    2. The inner join drops it. A relationship test from `fct_orders.status` to `order_statuses.status` can flag unmapped values. Add a separate `not_null` test if status is required.
+??? note "Answer guidance"
+    1. Each matching lookup row duplicates every matching order row, causing downstream `sum(total_cents)` queries to count those orders twice. Test `unique` on the lookup key and `unique` on the output `order_id`.
+    2. The inner join silently drops the unmapped order. Add a `relationships` test from `fct_orders.status` to `order_statuses.status` (paired with `not_null`) to catch unmapped values.
+    3. Yes. Canvas outputs standard `.sql` and `.yml` files committed to Git, so engineers can edit, review, and test the generated SQL directly in Studio, VS Code, or the CLI.
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |

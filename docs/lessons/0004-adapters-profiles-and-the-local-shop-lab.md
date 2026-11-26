@@ -1,14 +1,16 @@
 # Adapters, profiles and the local shop lab
 
-The dbt engine works out what to build. An adapter connects it to a particular data platform, handles dialect details such as identifier quoting, and implements platform-specific materializations and macros. The model's SQL still needs to run on that platform. Core v1 adapter plugins are Python packages. In v2, the supported adapters ship with the distribution, though some drivers are fetched separately. Verify adapter and feature support for your exact release.
+The dbt engine plans the DAG and compiles SQL, while an **adapter** connects dbt to a specific data platform. The adapter handles authentication, identifier quoting, dialect differences, and platform-specific materializations such as creating tables or merging incremental batches. In Core v1, adapters install as separate Python packages. In dbt v2, supported adapters ship with the distribution, though some database drivers download separately.
 
-| Core v1 adapter | Connection and execution concepts |
+| Adapter (`type` in `profiles.yml`) | Key connection and execution concepts |
 | --- | --- |
-| `dbt-snowflake` | Account, role, warehouse, database and schema. The role governs access and the warehouse provides compute. |
-| `dbt-bigquery` | Project, dataset and location, plus authentication such as a service account or OAuth. |
-| `dbt-databricks` | Host and HTTP path identify the compute endpoint. Catalog and schema locate relations. |
-| `dbt-postgres` | Host, port, database, schema and role. Check v2 support before migrating this project. |
-| `dbt-duckdb` | Embedded database, backed by a local file in this course. dbt v2 includes the DuckDB adapter and a driver for the starter. |
+| `snowflake` (`dbt-snowflake`) | Account, role, warehouse, database, and schema. The role controls permissions and the warehouse supplies compute. |
+| `bigquery` (`dbt-bigquery`) | GCP project, dataset, location, and auth method such as OAuth/ADC or service account. |
+| `databricks` (`dbt-databricks`) | Host and HTTP path identify compute; catalog and schema locate Unity Catalog relations. |
+| `postgres` (`dbt-postgres`) | Host, port, database, schema, and role. Confirm v2 support before migrating a Postgres project. |
+| `duckdb` (`dbt-duckdb`) | Embedded analytical database backed by a local file in this course. dbt v2 includes DuckDB support out of the box. |
+
+## How projects bind to profiles
 
 ```mermaid
 flowchart TD
@@ -18,15 +20,31 @@ flowchart TD
     D --> E["schema: main locates raw_orders and stg_orders"]
 ```
 
-The `profile` key in `dbt_project.yml` selects a named profile. Within that profile, `target: dev` chooses the default output and `--target` can choose another. An output holds the connection and default schema. `threads` limits concurrent work on eligible nodes, so dependent nodes still wait for their parents.
+1. `dbt_project.yml` sets `profile: shop_lab` to select a named connection block.
+2. `profiles.yml` defines `target: dev` as the default output (overridable via `--target prod`).
+3. Each output configures the adapter (`type`), destination namespace (`schema`), and concurrency (`threads`). Increasing `threads` lets dbt run independent branches concurrently while dependent nodes still wait for their parents.
+4. dbt locates `profiles.yml` in this precedence order: `--profiles-dir` CLI flag, `DBT_PROFILES_DIR` environment variable, the current project directory, and finally `~/.dbt/profiles.yml` (the standard user location outside Git).
 
-## Practice
+!!! tip "Keep credentials out of Git"
+    In shared repositories, store `profiles.yml` in `~/.dbt/` or keep secrets in environment variables using Jinja `{{ env_var('DBT_PASSWORD') }}`. Add `target/`, `dbt_packages/`, `logs/`, `*.duckdb`, and any local `.env` files to `.gitignore` so generated artifacts and credentials never enter version control.
 
-Install the full dbt v2 CLI. DuckDB runs in process and this file-backed target needs no account or credentials. [Install dbt v2](https://docs.getdbt.com/docs/local/install-dbt)
+## Practice: Build the shop lab
 
-In a separate `shop_lab` directory outside this course repository, create the four files below, including the `seeds` and `models` directories.
+Install the full dbt v2 CLI using [the official install guide](https://docs.getdbt.com/docs/local/install-dbt). DuckDB runs locally in-process, so this lab needs no cloud account or credentials.
 
-`dbt_project.yml`
+Create a new `shop_lab` directory outside this course repository with this structure:
+
+```text
+shop_lab/
+├── dbt_project.yml
+├── profiles.yml
+├── models/
+│   └── stg_orders.sql
+└── seeds/
+    └── raw_orders.csv
+```
+
+`dbt_project.yml` (dbt uses `view` as the default materialization when no model override is configured):
 
 ```yaml
 name: shop_lab
@@ -39,7 +57,7 @@ test-paths: [tests]
 snapshot-paths: [snapshots]
 ```
 
-`profiles.yml`
+`profiles.yml`:
 
 ```yaml
 shop_lab:
@@ -52,7 +70,7 @@ shop_lab:
       threads: 2
 ```
 
-`seeds/raw_orders.csv`
+`seeds/raw_orders.csv`:
 
 ```csv
 order_id,customer_id,status,total_cents,updated_at
@@ -61,7 +79,7 @@ order_id,customer_id,status,total_cents,updated_at
 3,102,paid,1750,2026-01-03 10:00:00
 ```
 
-`models/stg_orders.sql`
+`models/stg_orders.sql`:
 
 ```sql
 select
@@ -73,6 +91,8 @@ select
 from {{ ref('raw_orders') }}
 ```
 
+Run the setup checks from inside `shop_lab`:
+
 ```bash
 dbt --version
 dbt debug --profiles-dir .
@@ -80,20 +100,22 @@ dbt build --profiles-dir . --select +stg_orders
 dbt show --profiles-dir . --select stg_orders
 ```
 
-Check that the CLI reports v2 and that `dbt debug` reports a successful connection. The build should load `raw_orders` and then create the `stg_orders` view in `main`. In the preview, check for order IDs 1, 2 and 3, with paid orders 1 and 3 totaling 3,000 cents. Row order can vary.
+**Expected result.** `dbt --version` reports dbt v2 and `dbt debug` reports a passing connection check. `dbt build` loads `raw_orders` into `main.raw_orders` and creates `main.stg_orders` as a view. `dbt show` returns order IDs 1, 2, and 3, with paid orders 1 and 3 totaling 3,000 cents (row order may vary).
 
-Run later lab commands from `shop_lab`. Use `--profiles-dir .` to select the lab profile explicitly. To use the shorter commands in later lessons, run `export DBT_PROFILES_DIR="$PWD"` in your lab shell. Keep the generated database, build output and any real credentials out of Git.
+Keep `shop_lab` as your main workspace for later lessons. Pass `--profiles-dir .` on commands or run `export DBT_PROFILES_DIR="$PWD"` in your terminal session to omit the flag.
 
 ## Recall
 
-1. Which keys choose the adapter, the database file and the schema?
-2. What can two learners change to keep their lab data independent? What happens if they use an in-memory database across several commands?
+1. In `profiles.yml`, which keys pick the database adapter, the local DuckDB file, and the destination namespace?
+2. How does dbt search for `profiles.yml`, and how do teams keep warehouse passwords out of Git when `profiles.yml` is committed?
+3. What happens if two engineers share a single `shop.duckdb` file or configure `:memory:` as the DuckDB path across separate `dbt seed` and `dbt run` commands?
 
 ??? note "Answer guidance"
-    1. In the selected output, `type` chooses the adapter, `path` points DuckDB at a file, and `schema` sets the default namespace for the relations.
-    2. Use separate working directories with separate `shop.duckdb` files, or set a distinct file path in each profile. An in-memory database loses its relations at the end of each invocation.
+    1. Under the active output, `type` selects the adapter, `path` points DuckDB to the file on disk, and `schema` sets the default namespace (`main`).
+    2. dbt checks `--profiles-dir`, `DBT_PROFILES_DIR`, the current directory, and `~/.dbt/`. Teams keep `profiles.yml` in `~/.dbt/` or reference environment variables with `{{ env_var('...') }}`.
+    3. Sharing one DuckDB file causes lock conflicts or overwrites between runs. Using `:memory:` discards all tables as soon as the first invocation exits, so the next command fails with missing relations.
 
-[DuckDB setup](https://docs.getdbt.com/docs/local/connect-data-platform/duckdb-setup) · [Supported data platforms](https://docs.getdbt.com/docs/supported-data-platforms)
+[DuckDB setup](https://docs.getdbt.com/docs/local/connect-data-platform/duckdb-setup) · [Supported data platforms](https://docs.getdbt.com/docs/supported-data-platforms) · [Connection profiles](https://docs.getdbt.com/docs/core/connect-data-platform/profiles.yml)
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |

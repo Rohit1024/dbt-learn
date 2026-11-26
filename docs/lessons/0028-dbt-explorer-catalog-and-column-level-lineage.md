@@ -1,15 +1,15 @@
 # dbt Explorer, Catalog and column-level lineage
 
-dbt Catalog, formerly dbt Explorer, lets you search deployed dbt resources, inspect their definitions and health, and assess the impact of changes. It's available on Starter, Enterprise, and Enterprise+. Start with the project and deployment environment. A CI build in a temporary schema does not update Catalog. [Catalog](https://docs.getdbt.com/docs/explore/explore-projects)
+Before renaming `fct_orders.total_cents`, you need to see every upstream source feeding it, every downstream dashboard reading it, and whether yesterday's job actually built it cleanly. **dbt Catalog** (formerly **dbt Explorer**) aggregates deployment metadata across projects (available on Starter, Enterprise, and Enterprise+) so engineers can inspect lineage, column origins, run health, and project recommendations. Always filter Catalog to the intended deployment environment; temporary PR CI schemas do not overwrite Catalog metadata. [Catalog](https://docs.getdbt.com/docs/explore/explore-projects)
+
+## Metadata signals and column-level lineage
 
 | Evidence | Question it answers |
 | --- | --- |
-| Manifest and model lineage | Which resources depend on this model or feed it? |
-| Column metadata and lineage | What is the column's type, and where does its selected value come from? |
-| Run and test results | When did the job build or test this model, and what happened? |
-| Source freshness results | When was a configured source last loaded and checked? |
-
-A production or staging job supplies the metadata for its environment. `dbt build` supplies model and test results for selected resources. Source freshness needs a configured source and `dbt source freshness`. Platform jobs on v2 refresh catalog metadata automatically. For a local comparison, v2 `dbt build --write-catalog` writes warehouse relation and column metadata to `target/catalog.json`. In v1, `dbt docs generate` writes that artifact. [Catalog metadata generation](https://docs.getdbt.com/docs/explore/explore-projects#generate-metadata) · [Documentation commands](https://docs.getdbt.com/reference/commands/cmd-docs)
+| **Manifest and DAG search** | Which resources depend on this model (`+fct_orders+`, `access:public`, `tag:`)? |
+| **Column metadata and lineage** | What is the warehouse type, and where does each column expression originate? |
+| **Run and test health** | When did the job last build or test this model, and did execution timing regress? |
+| **Source freshness** | When was the upstream source table last loaded compared with its threshold? |
 
 ```mermaid
 flowchart TD
@@ -19,9 +19,14 @@ flowchart TD
     D --> E["Verify which consumers need to review the change"]
 ```
 
+- **How catalog metadata updates.** Platform jobs on dbt v2 update Catalog automatically. Locally, run `dbt build --write-catalog` on v2 (or `dbt docs generate` on v1) to populate `target/catalog.json` with warehouse relation and column types. [Catalog metadata generation](https://docs.getdbt.com/docs/explore/explore-projects#generate-metadata) · [Documentation commands](https://docs.getdbt.com/reference/commands/cmd-docs)
+- **Column-level lineage limits.** Static SQL analysis distinguishes direct **passthrough** edges (column copied as-is), **transformation** edges (arithmetic, casts, `case` logic), and **opaque** edges (complex macros, UDFs, or `SELECT *` patterns that obscure column dependencies). Avoid `SELECT *` in staging and marts so column lineage stays complete. Also remember column lineage tracks selected column expressions, not `WHERE` filters or `JOIN` cardinality changes! [Column-level lineage](https://docs.getdbt.com/docs/explore/column-level-lineage)
+
 ## Practice
 
-Use the [shop_lab setup](0004-adapters-profiles-and-the-local-shop-lab.md) and its [order fact](0006-models-refs-and-project-configuration.md). You are reviewing a proposed rename of `fct_orders.total_cents`. Trace the field upstream and find the downstream owner. If the dashboard exposure from lesson 0019 is missing, add `models/exposures.yml`.
+### What you need
+
+Use [shop_lab](0004-adapters-profiles-and-the-local-shop-lab.md) with [`fct_orders`](0006-models-refs-and-project-configuration.md) and [`models/exposures.yml`](0019-model-documentation-exposures-and-ownership.md) (create `exposures.yml` below if missing):
 
 ```yaml
 exposures:
@@ -35,7 +40,9 @@ exposures:
       email: analytics@example.org
 ```
 
-Run the local v2 checks from the lab directory.
+### Steps
+
+1. You plan to rename `fct_orders.total_cents`. Run the local dbt v2 catalog and column-lineage checks:
 
 ```bash
 dbt build --profiles-dir . --select +fct_orders --write-catalog
@@ -43,18 +50,20 @@ dbt compile --profiles-dir . --select +fct_orders --generate-info-schema --stati
 dbt show --profiles-dir . --info column_lineage
 ```
 
-- Find both `total_cents` edges in the column output. The value passes through `raw_orders` → `stg_orders` → `fct_orders`. If strict analysis is unavailable on your setup, trace the select lists in the staging and fact SQL.
-- In `target/manifest.json`, look up `exposure.shop_lab.orders_dashboard` in `parent_map` and find its owner under `exposures`. The parent is `model.shop_lab.fct_orders`, and the owner is Analytics. Consult the actual dashboard query to confirm which fields it uses.
-- If you have Catalog access, repeat the model trace in the correct production or staging environment. Record the job run time and status for the fact. On Enterprise or Enterprise+, open the column card for `total_cents` to compare its lineage. Local v2 column lineage requires strict static analysis. SQL parsing limits can create gaps, and column lineage primarily tracks selected values. Inspect joins and filters in the compiled SQL when diagnosing row changes. [Column-level lineage](https://docs.getdbt.com/docs/explore/column-level-lineage)
+2. Trace `total_cents` from `raw_orders` through `stg_orders` to `fct_orders` in the column lineage output (if strict analysis is unavailable on your setup, inspect the `SELECT` lists in `stg_orders.sql` and `fct_orders.sql`).
+3. Find downstream exposure ownership in `target/manifest.json` (confirm `parent_map` links `exposure.shop_lab.orders_dashboard` to `model.shop_lab.fct_orders`, owned by `Analytics`).
+4. **With Catalog access.** Open the same model in your Staging or Production environment, record the latest job timestamp and status, and (on Enterprise/Enterprise+) view the `total_cents` column lineage card. Check the actual BI query on `orders_dashboard` to verify whether it reads `total_cents`.
 
 ## Recall
 
-1. A model is queryable in the warehouse but missing from Catalog. What would you check first?
-2. If `total_cents` has a direct copy edge, can a change to a join still alter revenue?
+1. A table exists and is queryable in BigQuery or Snowflake, yet it is missing from dbt Catalog. What should you inspect first?
+2. Column lineage shows `fct_orders.total_cents` is a direct passthrough from `stg_orders.total_cents`. Can an edit to `fct_orders.sql` still double reported revenue?
+3. Why does writing `select * from {{ ref('stg_orders') }}` in downstream marts degrade both Catalog column lineage and dbt v2 static analysis?
 
-??? success "Answer guidance"
-    1. Check the project, deployment environment, and artifact-producing command and confirm that the model was selected. Then compare the job time and outcome with the actual warehouse relation and its data.
-    2. Yes. A new join can remove or repeat rows while leaving the selected column expression intact. Check the SQL and reconcile the row count and sum.
+??? note "Answer guidance"
+    1. Confirm you selected the right project and deployment environment (not a CI job), verify the latest deploy job succeeded with that model in its `--select` scope, and confirm metadata generation completed.
+    2. Yes. Adding a `JOIN` or changing a `WHERE` filter alters row cardinality (fanout) without modifying the `total_cents` expression itself. Always review the compiled SQL and check row counts and sums.
+    3. `SELECT *` hides explicit column projections unless full schema metadata is available and forces downstream models to re-resolve schemas dynamically, breaking column-level impact visibility when upstream columns change.
 
 | Previous | Curriculum | Next |
 | --- | --- | --- |
